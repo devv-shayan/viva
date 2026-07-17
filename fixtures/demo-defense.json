@@ -1,0 +1,22 @@
+{
+  "_note": "Placeholder fixture from design/demo-script.md — replace with the transcript of the real recorded run after Block 4. Shape = Transcript in design/schemas.md.",
+  "sessionId": "demo-areeba-001",
+  "studentName": "Areeba Khan",
+  "consent": { "given": true, "at": "2026-07-17T15:00:00+05:00", "spokenConfirmationTurnId": "t1" },
+  "turns": [
+    { "id": "t1", "speaker": "agent", "t": 0, "text": "Before we start — this conversation is recorded, and your teacher will see a summary with the transcript. It's a chance to show your understanding, not a test of your speaking. You can pause anytime, and you'll be able to review and flag anything afterwards. Ready? Let's start with the big picture. Your essay argues Karachi should charge cars to enter the city center at peak hours. In your own words — why is that the right tool for Karachi, rather than just building more roads?" },
+    { "id": "t2", "speaker": "student", "t": 24000, "text": "Because road space is the thing we can't make more of — widening roads in Karachi just fills up again in a year. Pricing changes when people drive and whether they take the bus instead, and it raises money for transit at the same time. That's why I said inaction is the costlier choice." },
+    { "id": "t3", "speaker": "agent", "t": 46000, "text": "In your second paragraph you cite London and Stockholm. Which result from those cities does the most work for your argument?" },
+    { "id": "t4", "speaker": "student", "t": 54000, "text": "Um... basically that it worked? Traffic went down and people ended up supporting it. It shows pricing is effective." },
+    { "id": "t5", "speaker": "agent", "t": 66000, "text": "You mention a specific figure from London in that paragraph — what was it, and why does that number matter for Karachi?" },
+    { "id": "t6", "speaker": "student", "t": 76000, "text": "Oh — the 15 percent drop in zone traffic after 2003. It matters because that's... matlab, pandra percent kam lagta hai lekin peak time mein woh jam khatam kar deta hai — the last 15 percent is what turns gridlock into moving traffic." },
+    { "id": "t7", "speaker": "agent", "t": 98000, "text": "Thank you — that's exactly the mechanism. Let me turn to the equity point. In paragraph three you say the concern that pricing 'falls hardest on low-income commuters' is overstated for Karachi. Walk me through how you reached that." },
+    { "id": "t8", "speaker": "student", "t": 112000, "text": "Most people driving cars into the center at peak hours are higher-income — lower-income commuters are mostly already on buses and bikes. So if you exempt motorcycles and put the fee money into the bus lines, they gain more than they pay. Honestly I didn't find a Karachi traffic survey to cite, that composition point is from general reporting." },
+    { "id": "t9", "speaker": "agent", "t": 138000, "text": "That's a fair account of where it stands. Here's a what-if: suppose the transit reinvestment never happens — the fee gets charged but the bus money is diverted. Does your equity argument still hold?" },
+    { "id": "t10", "speaker": "student", "t": 152000, "text": "No — and that's the honest answer. Without reinvestment it becomes just a tax that mostly spares the poor but doesn't help them either. That's why I put the ring-fencing and public revenue accounts in the conclusion — the equity case depends on that condition." },
+    { "id": "t11", "speaker": "agent", "t": 176000, "text": "Last area. In paragraph four you write that 'enforcement costs will be minimal' because the scheme can reuse Safe City cameras. What's sitting behind that claim?" },
+    { "id": "t12", "speaker": "student", "t": 188000, "text": "That one's more of an inference, honestly. The cameras exist and other cities' compliance was high once cameras were visible. I didn't estimate the actual integration or billing costs — I assumed reuse would be cheap." },
+    { "id": "t13", "speaker": "agent", "t": 212000, "text": "Thank you, Areeba — you clearly know where your argument is strong and where it leans on assumptions, and that's what this is for. You'll see the transcript now and can flag anything you think I got wrong. Your teacher makes any decisions from here." },
+    { "id": "t14", "speaker": "student", "t": 226000, "text": "Okay — that was less scary than I thought." }
+  ]
+}
