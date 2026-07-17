@@ -37,6 +37,7 @@ import {
   markPauseInterruptRequested,
   recordRealtimeResponseDone,
 } from "@/lib/pause-recovery";
+import { requireStableTranscriptItemId } from "@/lib/realtime-transcript";
 import {
   getRealtimeResponseDiagnostic,
   type RealtimeResponse,
@@ -86,10 +87,6 @@ const RESUME_FOCUS_INSTRUCTION =
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Something went wrong.";
-}
-
-function createTurnId(speaker: TranscriptTurn["speaker"]) {
-  return `${speaker}-${crypto.randomUUID()}`;
 }
 
 function displayTime(milliseconds: number) {
@@ -582,16 +579,28 @@ export function DefenseRoom({
           raw.type ===
           "conversation.item.input_audio_transcription.completed"
         ) {
+          const itemId = requireStableTranscriptItemId(raw);
+
+          if (!itemId) {
+            return;
+          }
+
           handleStudentTranscript(
-            raw.item_id ?? createTurnId("student"),
+            itemId,
             raw.transcript ?? "",
           );
           return;
         }
 
         if (raw.type === "response.output_audio_transcript.done") {
+          const itemId = requireStableTranscriptItemId(raw);
+
+          if (!itemId) {
+            return;
+          }
+
           handleAgentTranscript(
-            raw.item_id ?? createTurnId("agent"),
+            itemId,
             raw.transcript ?? "",
           );
           return;
