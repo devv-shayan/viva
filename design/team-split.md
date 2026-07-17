@@ -37,24 +37,28 @@ deployment, video, QA.
   decided" writeup (must be written by whoever drove the session)
 
 ### Dev B — Product surface + ship (own Codex sessions)
-- Screens 3, 5a, 5b per `design/screens-and-copy.md`: student consent,
-  student review + challenge flags, teacher dossier view. Build against a
-  hand-written mock `Dossier` JSON — don't wait for A's endpoints.
-  (Screens 1–2 and the defense room moved to Dev A's session, which already
-  built the teacher workbench in Block 2 and wires the defense room in
-  Block 3.)
-- Early shipping lane (pull forward, don't leave for Monday): first Vercel
-  deploy of current main, `.env.example`, README skeleton filled as features
-  land, error-state copy from `design/screens-and-copy.md`.
-- Block 6 demo mode: fixture replay with pacing, demo banner, landing entry.
-- Block 7 ship: error states, README (skeleton in `design/submission-kit.md`),
-  `.env.example`, Vercel deploy, incognito demo-mode verification.
-- Demo production: play/recruit the student for the scripted defense
-  (`design/demo-script.md` — bullet notes, not memorized lines), record the
-  canonical fixture run with A on Sunday, then own the 3-min video edit +
-  voiceover Monday.
-- Logistics: Codex credits status, Devpost form, repo sharing emails, YouTube
-  upload + logged-out playback check.
+
+**STATUS Sat night Jul 18: Blocks 0–4 are DONE in the primary session (a day
+ahead of the printed schedule below). Consent (Screen 3) and student review
+(5a) were absorbed into Dev A's session and already exist. Dev B's remaining
+list, in priority order:**
+
+1. **Screen 5b — teacher dossier view** per `design/screens-and-copy.md`,
+   built against a hand-written mock `Dossier` JSON matching
+   `design/schemas.md` exactly. Findings with passage/question/answer links,
+   approve/dismiss/annotate, notTested list, framing note, student-challenge
+   display. This is the screen judges stare at longest — polish it. Dev A's
+   Block 5 endpoint will swap in for the mock.
+2. **Shipping lane (do TODAY, not Monday):** add MIT `LICENSE` (repo is
+   already public — rules require licensing), `.env.example`, first Vercel
+   deploy of main, README skeleton from `design/submission-kit.md`.
+3. **Block 6 demo mode:** fixture replay with pacing, demo banner, landing
+   entry — after 5b.
+4. **Demo production:** rehearse the Areeba role twice (bullet notes, not
+   memorized lines), voiceover script first draft, record the canonical
+   fixture run with A on Sunday night, own the video edit Monday.
+5. **Logistics:** Devpost form + Representative confirmation, repo sharing
+   emails if the repo ever goes private, YouTube upload + logged-out check.
 
 ## Interfaces between A and B (agree before splitting, never drift)
 
