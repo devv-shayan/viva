@@ -23,6 +23,12 @@ import { z } from "zod";
 import { PassageDocument } from "@/components/passage-document";
 import { Button } from "@/components/ui/button";
 import {
+  createAssessLatencyMetrics,
+  requestAssessment,
+} from "@/lib/assess-client";
+import { createAssessmentRequestGuard } from "@/lib/assess-request-guard";
+import type { AssessDelta } from "@/lib/assess-types";
+import {
   getDefenseElapsedMs,
   isDefenseTimeExpired,
   pauseDefenseClock,
@@ -30,10 +36,12 @@ import {
   type DefenseClock,
 } from "@/lib/defense-clock";
 import { vivaModels } from "@/lib/models";
+import { nextFallbackFocus, nextFocus, type NextFocus } from "@/lib/orchestrator";
 import {
   consumePauseFocusRecovery,
   createPauseRecoveryState,
   markAgentResponseRequested,
+  markPauseOwnedResponseStarted,
   markPauseInterruptRequested,
   recordRealtimeResponseDone,
 } from "@/lib/pause-recovery";
@@ -52,6 +60,7 @@ import {
   type TranscriptTurn,
   type VivaSessionState,
 } from "@/lib/session-state";
+import { ASSESS_HICCUP_MESSAGE, TRUST_PROMISES } from "@/lib/trust-contract";
 
 type ConnectionStatus = "idle" | "connecting" | "connected" | "error";
 
@@ -71,6 +80,7 @@ type RawRealtimeEvent = {
 type DefenseRoomProps = {
   examinerInstructions: string;
   onActivateFocus: () => VivaSessionState | null;
+  onApplyAssessment: (delta: AssessDelta) => VivaSessionState | null;
   onAppendRealtimeDiagnostic: (
     diagnostic: RealtimeResponseDiagnostic,
   ) => VivaSessionState | null;
@@ -78,6 +88,12 @@ type DefenseRoomProps = {
   onComplete: () => VivaSessionState | null;
   onSetPendingFocus: (focus: Focus | undefined) => VivaSessionState | null;
   session: VivaSessionState;
+};
+
+type PendingAssessment = {
+  activeFocus: Focus;
+  afterAnswer: VivaSessionState;
+  answerTurn: TranscriptTurn;
 };
 
 const FINAL_AUDIO_DRAIN_TIMEOUT_MS = 8_000;
@@ -134,6 +150,7 @@ function diagnosticForPersistence(
 export function DefenseRoom({
   examinerInstructions,
   onActivateFocus,
+  onApplyAssessment,
   onAppendRealtimeDiagnostic,
   onAppendTurn,
   onComplete,
@@ -159,6 +176,26 @@ export function DefenseRoom({
   const finalAudioFinishTimerRef = useRef<number | null>(null);
   const connectionAttemptRef = useRef(0);
   const pauseRecoveryRef = useRef(createPauseRecoveryState());
+  const pauseAwaitingResponseStartRef = useRef(false);
+  const isPausedRef = useRef(false);
+  const focusRequestGenerationRef = useRef(0);
+  const deferredFocusAfterPauseRef = useRef<{
+    focus: Focus;
+    resume: boolean;
+  } | null>(null);
+  const queuedFocusRequestRef = useRef<{
+    focus: Focus;
+    generation: number;
+    resume: boolean;
+  } | null>(null);
+  const deferredAssessmentAfterPauseRef = useRef<PendingAssessment | null>(
+    null,
+  );
+  const assessMetricsRef = useRef(createAssessLatencyMetrics());
+  const assessmentGuardRef = useRef(createAssessmentRequestGuard());
+  const assessmentAbortControllerRef = useRef<AbortController | null>(null);
+  const assessmentInFlightRef = useRef(false);
+  const fallbackAfterPausedAssessmentRef = useRef(false);
 
   const [connectionStatus, setConnectionStatus] =
     useState<ConnectionStatus>("idle");
@@ -168,6 +205,7 @@ export function DefenseRoom({
   const [error, setError] = useState<string | null>(null);
   const [isPaused, setIsPaused] = useState(false);
   const [isFinishing, setIsFinishing] = useState(false);
+  const [isAssessing, setIsAssessing] = useState(false);
   const [shouldReaskFocusAfterPause, setShouldReaskFocusAfterPause] =
     useState(false);
 
@@ -178,6 +216,25 @@ export function DefenseRoom({
   const timestamp = useCallback(() => {
     return getDefenseElapsedMs(defenseClockRef.current, performance.now());
   }, []);
+
+  const cancelPendingAssessment = useCallback(
+    ({ continueAfterPause = false }: { continueAfterPause?: boolean } = {}) => {
+      const wasAssessing = assessmentInFlightRef.current;
+
+      assessmentGuardRef.current.invalidate();
+      assessmentAbortControllerRef.current?.abort();
+      assessmentAbortControllerRef.current = null;
+      assessmentInFlightRef.current = false;
+      setIsAssessing(false);
+
+      if (continueAfterPause && wasAssessing) {
+        fallbackAfterPausedAssessmentRef.current = true;
+      }
+
+      return wasAssessing;
+    },
+    [],
+  );
 
   const clearFinalAudioTimers = useCallback(() => {
     if (finalAudioDrainTimeoutRef.current !== null) {
@@ -202,6 +259,14 @@ export function DefenseRoom({
 
       finishedRef.current = true;
       connectionAttemptRef.current += 1;
+      focusRequestGenerationRef.current += 1;
+      isPausedRef.current = false;
+      pauseAwaitingResponseStartRef.current = false;
+      deferredFocusAfterPauseRef.current = null;
+      queuedFocusRequestRef.current = null;
+      deferredAssessmentAfterPauseRef.current = null;
+      fallbackAfterPausedAssessmentRef.current = false;
+      cancelPendingAssessment();
       awaitingFinalAudioRef.current = false;
       clearFinalAudioTimers();
       const realtime = realtimeRef.current;
@@ -224,7 +289,7 @@ export function DefenseRoom({
 
       onComplete();
     },
-    [clearFinalAudioTimers, onComplete],
+    [cancelPendingAssessment, clearFinalAudioTimers, onComplete],
   );
 
   const completeAfterFinalAudio = useCallback(() => {
@@ -263,19 +328,31 @@ export function DefenseRoom({
 
   const requestReplyForFocus = useCallback(
     (focus: Focus, { resume = false }: { resume?: boolean } = {}) => {
-      const activated = onActivateFocus();
-
-      if (!activated) {
-        setError("The consented defense session is no longer available.");
-        return;
-      }
-
-      sessionStateRef.current = activated;
+      const queuedGeneration = focusRequestGenerationRef.current;
+      queuedFocusRequestRef.current = {
+        focus,
+        generation: queuedGeneration,
+        resume,
+      };
 
       const request = focusSequenceRef.current
         .catch(() => undefined)
         .then(() => {
-          if (endRequestedRef.current) {
+          if (endRequestedRef.current || finishedRef.current) {
+            return;
+          }
+
+          if (isPausedRef.current) {
+            deferredFocusAfterPauseRef.current = { focus, resume };
+
+            if (queuedFocusRequestRef.current?.focus === focus) {
+              queuedFocusRequestRef.current = null;
+            }
+
+            return;
+          }
+
+          if (queuedGeneration !== focusRequestGenerationRef.current) {
             return;
           }
 
@@ -283,6 +360,19 @@ export function DefenseRoom({
 
           if (!realtime) {
             return;
+          }
+
+          const activated = onActivateFocus();
+
+          if (!activated) {
+            setError("The consented defense session is no longer available.");
+            return;
+          }
+
+          sessionStateRef.current = activated;
+
+          if (queuedFocusRequestRef.current?.focus === focus) {
+            queuedFocusRequestRef.current = null;
           }
 
           const focusInstruction = formatFocus(focus, activated.graph);
@@ -326,6 +416,111 @@ export function DefenseRoom({
       focusSequenceRef.current = request;
     },
     [onActivateFocus],
+  );
+
+  const scheduleNextFocus = useCallback(
+    (
+      candidate: NextFocus,
+      { resume = false }: { resume?: boolean } = {},
+    ) => {
+      const current = sessionStateRef.current;
+      const focus = candidate === "wrap" ? focusForWrap(current) : candidate;
+
+      if (!focus) {
+        finishAndReview();
+        return;
+      }
+
+      const withPendingFocus = onSetPendingFocus(focus);
+
+      if (!withPendingFocus) {
+        return;
+      }
+
+      sessionStateRef.current = withPendingFocus;
+      requestReplyForFocus(focus, { resume });
+    },
+    [finishAndReview, onSetPendingFocus, requestReplyForFocus],
+  );
+
+  const startAssessment = useCallback(
+    ({ activeFocus, afterAnswer, answerTurn }: PendingAssessment) => {
+      if (isPausedRef.current) {
+        deferredAssessmentAfterPauseRef.current = {
+          activeFocus,
+          afterAnswer,
+          answerTurn,
+        };
+        return;
+      }
+
+      // A final transcription may arrive twice or land after a reconnect.
+      // Only one assessment may spend credit or choose the next FOCUS.
+      cancelPendingAssessment();
+      const assessmentToken = assessmentGuardRef.current.begin();
+      const controller = new AbortController();
+      assessmentAbortControllerRef.current = controller;
+      assessmentInFlightRef.current = true;
+      setIsAssessing(true);
+
+      void (async () => {
+        try {
+          const { delta } = await requestAssessment(
+            {
+              answerTurns: [answerTurn],
+              focus: activeFocus,
+              graph: afterAnswer.graph,
+              recentTurns: afterAnswer.transcript.turns.slice(-6),
+            },
+            {
+              metrics: assessMetricsRef.current,
+              onMetrics: (metrics) => {
+                if (assessmentGuardRef.current.isCurrent(assessmentToken)) {
+                  assessMetricsRef.current = metrics;
+                }
+              },
+              signal: controller.signal,
+            },
+          );
+
+          if (!assessmentGuardRef.current.isCurrent(assessmentToken)) {
+            return;
+          }
+
+          const assessed = onApplyAssessment(delta);
+
+          if (!assessed) {
+            return;
+          }
+
+          sessionStateRef.current = assessed;
+          scheduleNextFocus(
+            nextFocus(assessed.coverage, assessed.graph, timestamp()),
+          );
+        } catch {
+          if (!assessmentGuardRef.current.isCurrent(assessmentToken)) {
+            return;
+          }
+
+          setError(ASSESS_HICCUP_MESSAGE);
+          const current = sessionStateRef.current;
+          scheduleNextFocus(
+            nextFallbackFocus(current.coverage, current.graph, timestamp()),
+          );
+        } finally {
+          if (assessmentGuardRef.current.isCurrent(assessmentToken)) {
+            assessmentInFlightRef.current = false;
+
+            if (assessmentAbortControllerRef.current === controller) {
+              assessmentAbortControllerRef.current = null;
+            }
+
+            setIsAssessing(false);
+          }
+        }
+      })();
+    },
+    [cancelPendingAssessment, onApplyAssessment, scheduleNextFocus, timestamp],
   );
 
   useEffect(() => {
@@ -376,27 +571,25 @@ export function DefenseRoom({
       }
 
       sessionStateRef.current = afterAnswer;
+      const answerTurn = afterAnswer.transcript.turns.find(
+        (turn) => turn.id === itemId,
+      );
+      const activeFocus = afterAnswer.activeFocus;
 
-      // Block 4 will replace this deterministic preview path with /api/assess.
-      // The focus and transcript seams stay identical, so the assessment call
-      // cannot race the next model response.
-      const nextFocus = createPreviewNextFocus(afterAnswer) ?? focusForWrap(afterAnswer);
-
-      if (!nextFocus) {
-        finishAndReview();
+      if (!answerTurn || !activeFocus) {
+        scheduleNextFocus(
+          nextFallbackFocus(
+            afterAnswer.coverage,
+            afterAnswer.graph,
+            timestamp(),
+          ),
+        );
         return;
       }
 
-      const withPendingFocus = onSetPendingFocus(nextFocus);
-
-      if (!withPendingFocus) {
-        return;
-      }
-
-      sessionStateRef.current = withPendingFocus;
-      requestReplyForFocus(nextFocus);
+      startAssessment({ activeFocus, afterAnswer, answerTurn });
     },
-    [finishAndReview, onAppendTurn, onSetPendingFocus, requestReplyForFocus, timestamp],
+    [onAppendTurn, scheduleNextFocus, startAssessment, timestamp],
   );
 
   const handleAgentTranscript = useCallback(
@@ -425,6 +618,14 @@ export function DefenseRoom({
   const connect = useCallback(async () => {
     const connectionAttempt = connectionAttemptRef.current + 1;
     connectionAttemptRef.current = connectionAttempt;
+    focusRequestGenerationRef.current += 1;
+    isPausedRef.current = false;
+    pauseAwaitingResponseStartRef.current = false;
+    deferredFocusAfterPauseRef.current = null;
+    queuedFocusRequestRef.current = null;
+    deferredAssessmentAfterPauseRef.current = null;
+    cancelPendingAssessment();
+    fallbackAfterPausedAssessmentRef.current = false;
 
     if (realtimeRef.current) {
       realtimeRef.current.close();
@@ -538,7 +739,37 @@ export function DefenseRoom({
           return;
         }
 
+        if (raw.type === "response.created") {
+          if (
+            isPausedRef.current &&
+            pauseAwaitingResponseStartRef.current
+          ) {
+            pauseAwaitingResponseStartRef.current = false;
+            pauseRecoveryRef.current = markPauseOwnedResponseStarted(
+              pauseRecoveryRef.current,
+            );
+
+            // Let the SDK observe response.created before it serializes the
+            // cancellation; otherwise interrupt() may see no active response.
+            queueMicrotask(() => {
+              const activeRealtime = realtimeRef.current;
+
+              if (
+                isPausedRef.current &&
+                activeRealtime &&
+                activeRealtime === realtime &&
+                connectionAttempt === connectionAttemptRef.current
+              ) {
+                activeRealtime.interrupt();
+              }
+            });
+          }
+
+          return;
+        }
+
         if (raw.type === "response.done") {
+          pauseAwaitingResponseStartRef.current = false;
           pauseRecoveryRef.current = recordRealtimeResponseDone(
             pauseRecoveryRef.current,
             raw.response,
@@ -678,6 +909,7 @@ export function DefenseRoom({
     }
   }, [
     examinerInstructions,
+    cancelPendingAssessment,
     clearFinalAudioTimers,
     completeAfterFinalAudio,
     finishAndReview,
@@ -696,30 +928,95 @@ export function DefenseRoom({
       return;
     }
 
-    const shouldPause = !isPaused;
+    const shouldPause = !isPausedRef.current;
     const nowMs = performance.now();
 
     if (shouldPause) {
+      // Set this fence before interrupting transport work: a queued FOCUS or
+      // late final transcript must wait for an explicit resume.
+      isPausedRef.current = true;
+      realtime.mute(true);
+      setIsPaused(true);
+      const queuedFocus = queuedFocusRequestRef.current;
+
+      if (queuedFocus) {
+        deferredFocusAfterPauseRef.current = {
+          focus: queuedFocus.focus,
+          resume: queuedFocus.resume,
+        };
+        queuedFocusRequestRef.current = null;
+      }
+
+      focusRequestGenerationRef.current += 1;
+      cancelPendingAssessment({ continueAfterPause: true });
       defenseClockRef.current = pauseDefenseClock(
         defenseClockRef.current,
         nowMs,
       );
+      pauseAwaitingResponseStartRef.current =
+        pauseRecoveryRef.current.agentResponseInFlight;
       pauseRecoveryRef.current = markPauseInterruptRequested(
         pauseRecoveryRef.current,
       );
       setShouldReaskFocusAfterPause(false);
       realtime.interrupt();
+      return;
     } else {
       defenseClockRef.current = resumeDefenseClock(
         defenseClockRef.current,
         nowMs,
       );
       setElapsedMs(getDefenseElapsedMs(defenseClockRef.current, nowMs));
-    }
 
-    realtime.mute(shouldPause);
-    setIsPaused(shouldPause);
-  }, [connectionStatus, isPaused]);
+      isPausedRef.current = false;
+      realtime.mute(false);
+      setIsPaused(false);
+
+      const deferredAssessment = deferredAssessmentAfterPauseRef.current;
+
+      if (deferredAssessment) {
+        deferredAssessmentAfterPauseRef.current = null;
+        pauseAwaitingResponseStartRef.current = false;
+        pauseRecoveryRef.current = createPauseRecoveryState();
+        startAssessment(deferredAssessment);
+        return;
+      }
+
+      if (fallbackAfterPausedAssessmentRef.current) {
+        fallbackAfterPausedAssessmentRef.current = false;
+        pauseAwaitingResponseStartRef.current = false;
+        pauseRecoveryRef.current = createPauseRecoveryState();
+        setShouldReaskFocusAfterPause(false);
+        const current = sessionStateRef.current;
+        scheduleNextFocus(
+          nextFallbackFocus(current.coverage, current.graph, timestamp()),
+          { resume: true },
+        );
+        return;
+      }
+
+      const deferredFocus = deferredFocusAfterPauseRef.current;
+
+      if (deferredFocus) {
+        deferredFocusAfterPauseRef.current = null;
+        pauseAwaitingResponseStartRef.current = false;
+        pauseRecoveryRef.current = createPauseRecoveryState();
+        setShouldReaskFocusAfterPause(false);
+        requestReplyForFocus(deferredFocus.focus, {
+          resume: deferredFocus.resume,
+        });
+      }
+
+      return;
+    }
+  }, [
+    cancelPendingAssessment,
+    connectionStatus,
+    requestReplyForFocus,
+    scheduleNextFocus,
+    startAssessment,
+    timestamp,
+  ]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -744,11 +1041,18 @@ export function DefenseRoom({
   useEffect(() => {
     return () => {
       connectionAttemptRef.current += 1;
+      focusRequestGenerationRef.current += 1;
+      isPausedRef.current = false;
+      pauseAwaitingResponseStartRef.current = false;
+      deferredFocusAfterPauseRef.current = null;
+      queuedFocusRequestRef.current = null;
+      deferredAssessmentAfterPauseRef.current = null;
+      cancelPendingAssessment();
       clearFinalAudioTimers();
       realtimeRef.current?.close();
       realtimeRef.current = null;
     };
-  }, [clearFinalAudioTimers]);
+  }, [cancelPendingAssessment, clearFinalAudioTimers]);
 
   const activeFocus = session.activeFocus ?? session.pendingFocus;
   const highlights = activeFocus
@@ -873,7 +1177,7 @@ export function DefenseRoom({
             </ol>
 
             <div className="mt-5 border-l-2 border-[#1e463e] bg-[#edf5ee] p-4 text-sm leading-6 text-[#365945]">
-              <span className="font-medium">You can pause at any time.</span> Take
+              <span className="font-medium">{TRUST_PROMISES.pauseIsFree}</span> Take
               a moment, then resume when you are ready.
             </div>
           </aside>
@@ -924,6 +1228,13 @@ export function DefenseRoom({
               <CircleAlert className="mt-0.5 size-4 shrink-0" />
               <p>{error}</p>
             </div>
+          ) : null}
+
+          {isAssessing ? (
+            <p className="mx-5 mt-5 flex items-center gap-2 text-sm text-[#655d52]" role="status">
+              <LoaderCircle className="size-4 animate-spin" /> Viva is considering the
+              content of your answer.
+            </p>
           ) : null}
 
           <div className="max-h-[28rem] overflow-y-auto p-5 sm:p-6">

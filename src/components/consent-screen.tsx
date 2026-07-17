@@ -5,6 +5,7 @@ import { ArrowLeft, ArrowRight, Check, ShieldCheck } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import type { DefenseDraft } from "@/lib/session-state";
+import { TRUST_PROMISES } from "@/lib/trust-contract";
 
 type ConsentScreenProps = {
   draft: DefenseDraft;
@@ -47,21 +48,20 @@ export function ConsentScreen({ draft, onBack, onBegin }: ConsentScreenProps) {
             <li className="flex gap-3">
               <Check className="mt-1 size-4 shrink-0 text-[#23513d]" />
               <span>
-                Viva never judges who wrote your work. It gives no grades or
-                verdicts.
+                {TRUST_PROMISES.noVerdicts}
               </span>
             </li>
             <li className="flex gap-3">
               <Check className="mt-1 size-4 shrink-0 text-[#23513d]" />
               <span>
-                You can answer in any language. The conversation is about your
-                ideas, not your accent or fluency.
+                You can answer in any language. {TRUST_PROMISES.contentOnly}
               </span>
             </li>
             <li className="flex gap-3">
               <Check className="mt-1 size-4 shrink-0 text-[#23513d]" />
               <span>
-                You can pause at any time and review the transcript afterwards.
+                {TRUST_PROMISES.pauseIsFree} You can review the transcript
+                afterwards.
               </span>
             </li>
           </ul>

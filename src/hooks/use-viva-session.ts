@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   VIVA_SESSION_STORAGE_KEY,
   activatePendingFocus,
+  applyAssessDelta,
   appendRealtimeResponseDiagnostic,
   appendTranscriptTurn,
   createDefenseSession,
@@ -19,6 +20,7 @@ import {
   type TranscriptTurn,
   type VivaSessionState,
 } from "@/lib/session-state";
+import type { AssessDelta } from "@/lib/assess-types";
 
 type SessionUpdater = (
   session: VivaSessionState | null,
@@ -102,6 +104,12 @@ export function useVivaSession() {
     [commit],
   );
 
+  const applyAssessment = useCallback(
+    (delta: AssessDelta) =>
+      commit((current) => (current ? applyAssessDelta(current, delta) : current)),
+    [commit],
+  );
+
   const completeDefense = useCallback(
     () => commit((current) => (current ? finishDefense(current) : current)),
     [commit],
@@ -119,6 +127,7 @@ export function useVivaSession() {
 
   return {
     activateFocus,
+    applyAssessment,
     appendRealtimeDiagnostic,
     appendTurn,
     clearSession,

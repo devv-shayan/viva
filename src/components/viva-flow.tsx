@@ -23,6 +23,7 @@ export default function VivaFlow({
   const [showConsent, setShowConsent] = useState(false);
   const {
     activateFocus,
+    applyAssessment,
     appendRealtimeDiagnostic,
     appendTurn,
     clearSession,
@@ -49,6 +50,7 @@ export default function VivaFlow({
       <DefenseRoom
         examinerInstructions={examinerInstructions}
         onActivateFocus={activateFocus}
+        onApplyAssessment={applyAssessment}
         onAppendRealtimeDiagnostic={appendRealtimeDiagnostic}
         onAppendTurn={appendTurn}
         onComplete={completeDefense}

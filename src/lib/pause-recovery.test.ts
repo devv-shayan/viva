@@ -4,6 +4,7 @@ import {
   consumePauseFocusRecovery,
   createPauseRecoveryState,
   markAgentResponseRequested,
+  markPauseOwnedResponseStarted,
   markPauseInterruptRequested,
   recordRealtimeResponseDone,
 } from "./pause-recovery";
@@ -32,5 +33,15 @@ describe("pause recovery", () => {
     state = recordRealtimeResponseDone(state, { status: "completed" });
 
     expect(consumePauseFocusRecovery(state).shouldReaskFocus).toBe(false);
+  });
+
+  it("recovers the focus when a reply starts after pause won the transport race", () => {
+    let state = createPauseRecoveryState();
+    state = markAgentResponseRequested(state);
+    state = markPauseInterruptRequested(state);
+    state = markPauseOwnedResponseStarted(state);
+    state = recordRealtimeResponseDone(state, { status: "completed" });
+
+    expect(consumePauseFocusRecovery(state).shouldReaskFocus).toBe(true);
   });
 });
