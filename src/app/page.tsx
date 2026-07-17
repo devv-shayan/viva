@@ -1,7 +1,8 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
-import TeacherWorkflow from "@/components/teacher-workflow";
+import VivaFlow from "@/components/viva-flow";
+import { extractExaminerInstructions } from "@/lib/examiner-instructions";
 import { extractSampleEssay } from "@/lib/sample-submission";
 
 export default async function Home() {
@@ -9,6 +10,15 @@ export default async function Home() {
     path.join(process.cwd(), "fixtures", "sample-essay.md"),
     "utf8",
   );
+  const examinerAgent = await readFile(
+    path.join(process.cwd(), "design", "examiner-agent.md"),
+    "utf8",
+  );
 
-  return <TeacherWorkflow sampleEssay={extractSampleEssay(fixture)} />;
+  return (
+    <VivaFlow
+      examinerInstructions={extractExaminerInstructions(examinerAgent)}
+      sampleEssay={extractSampleEssay(fixture)}
+    />
+  );
 }

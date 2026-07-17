@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { requireOpenAIKey } from "@/lib/env";
 import { vivaModels } from "@/lib/models";
+import { createRealtimeClientSecretSession } from "@/lib/realtime-session";
 
 export const runtime = "nodejs";
 
@@ -26,10 +27,7 @@ export async function POST() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          session: {
-            model: vivaModels.realtime,
-            type: "realtime",
-          },
+          session: createRealtimeClientSecretSession(vivaModels.realtime),
         }),
         cache: "no-store",
       },

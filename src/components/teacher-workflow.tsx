@@ -15,16 +15,22 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  PassageDocument,
+  type PassageHighlight,
+} from "@/components/passage-document";
 import type {
   ArgumentGraph,
   Claim,
-  PassageRef,
   RubricObjective,
   Submission,
 } from "@/lib/analysis-types";
 import { sampleRubric } from "@/lib/sample-submission";
+import type { DefenseDraft } from "@/lib/session-state";
 
 type TeacherWorkflowProps = {
+  initialDraft?: DefenseDraft | null;
+  onStartDefense: (draft: DefenseDraft) => void;
   sampleEssay: string;
 };
 
@@ -35,59 +41,11 @@ type AnalyzeResponse = {
 
 type Screen = "setup" | "review";
 
-type Highlight = PassageRef & {
-  label: string;
-};
-
 function cloneSampleRubric(): RubricObjective[] {
   return sampleRubric.map((objective) => ({ ...objective }));
 }
 
-function splitWithHighlights(text: string, highlights: Highlight[]) {
-  const matches = highlights
-    .map((highlight) => ({
-      ...highlight,
-      start: text.indexOf(highlight.quote),
-    }))
-    .filter((highlight) => highlight.start >= 0)
-    .sort((left, right) => left.start - right.start || right.quote.length - left.quote.length)
-    .filter((highlight, index, all) => {
-      const previous = all[index - 1];
-      return !previous || highlight.start >= previous.start + previous.quote.length;
-    });
-
-  if (matches.length === 0) {
-    return text;
-  }
-
-  const fragments: React.ReactNode[] = [];
-  let cursor = 0;
-
-  for (const [index, match] of matches.entries()) {
-    if (cursor < match.start) {
-      fragments.push(text.slice(cursor, match.start));
-    }
-
-    fragments.push(
-      <mark
-        className="rounded-sm bg-[#f5d783] px-0.5 text-inherit shadow-[inset_0_-1px_0_#d0a940]"
-        key={`${match.paragraphId}-${match.start}-${index}`}
-        title={match.label}
-      >
-        {match.quote}
-      </mark>,
-    );
-    cursor = match.start + match.quote.length;
-  }
-
-  if (cursor < text.length) {
-    fragments.push(text.slice(cursor));
-  }
-
-  return fragments;
-}
-
-function claimHighlights(claim: Claim | undefined): Highlight[] {
+function claimHighlights(claim: Claim | undefined): PassageHighlight[] {
   if (!claim) {
     return [];
   }
@@ -105,14 +63,36 @@ function rubricLabel(id: string, rubric: RubricObjective[]) {
   return rubric.find((objective) => objective.id === id)?.text ?? id;
 }
 
-export default function TeacherWorkflow({ sampleEssay }: TeacherWorkflowProps) {
-  const [screen, setScreen] = useState<Screen>("setup");
-  const [studentName, setStudentName] = useState("");
-  const [title, setTitle] = useState("");
-  const [essay, setEssay] = useState("");
-  const [rubric, setRubric] = useState<RubricObjective[]>(cloneSampleRubric);
-  const [result, setResult] = useState<AnalyzeResponse | null>(null);
-  const [activeClaimId, setActiveClaimId] = useState("thesis");
+export default function TeacherWorkflow({
+  initialDraft,
+  onStartDefense,
+  sampleEssay,
+}: TeacherWorkflowProps) {
+  const [screen, setScreen] = useState<Screen>(() =>
+    initialDraft ? "review" : "setup",
+  );
+  const [studentName, setStudentName] = useState(
+    () => initialDraft?.submission.studentName ?? "",
+  );
+  const [title, setTitle] = useState(
+    () => initialDraft?.submission.title ?? "",
+  );
+  const [essay, setEssay] = useState(
+    () => initialDraft?.submission.text ?? "",
+  );
+  const [rubric, setRubric] = useState<RubricObjective[]>(() =>
+    initialDraft
+      ? initialDraft.rubric.map((objective) => ({ ...objective }))
+      : cloneSampleRubric(),
+  );
+  const [result, setResult] = useState<AnalyzeResponse | null>(() =>
+    initialDraft
+      ? { graph: initialDraft.graph, submission: initialDraft.submission }
+      : null,
+  );
+  const [activeClaimId, setActiveClaimId] = useState(
+    () => initialDraft?.graph.thesis.id ?? "thesis",
+  );
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -213,9 +193,15 @@ export default function TeacherWorkflow({ sampleEssay }: TeacherWorkflowProps) {
   }
 
   function startDefense() {
-    setNotice(
-      "The voice defense arrives in Block 3. Your reviewed argument map remains available here.",
-    );
+    if (!result) {
+      return;
+    }
+
+    onStartDefense({
+      graph: result.graph,
+      rubric,
+      submission: result.submission,
+    });
   }
 
   if (screen === "review" && result) {
@@ -338,31 +324,11 @@ export default function TeacherWorkflow({ sampleEssay }: TeacherWorkflowProps) {
                 </span>
               </div>
 
-              <div className="mt-6 space-y-6">
-                {result.submission.paragraphs.map((paragraph) => {
-                  const highlights = activeHighlights.filter(
-                    (highlight) => highlight.paragraphId === paragraph.id,
-                  );
-
-                  return (
-                    <section
-                      className={`border-l-2 pl-4 transition-colors ${
-                        highlights.length > 0
-                          ? "border-[#d2a93e] bg-[#fff7df] py-2"
-                          : "border-[#e5ded3]"
-                      }`}
-                      key={paragraph.id}
-                    >
-                      <p className="mb-2 text-xs font-semibold tracking-[0.14em] text-[#877c6b] uppercase">
-                        {paragraph.id}
-                      </p>
-                      <p className="font-serif text-[1.04rem] leading-8 text-[#38332b]">
-                        {splitWithHighlights(paragraph.text, highlights)}
-                      </p>
-                    </section>
-                  );
-                })}
-              </div>
+              <PassageDocument
+                className="mt-6 space-y-6"
+                highlights={activeHighlights}
+                submission={result.submission}
+              />
             </article>
           </section>
 
