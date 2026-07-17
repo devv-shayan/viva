@@ -127,6 +127,17 @@ describe("Viva answer assessment", () => {
     ).rejects.toBeInstanceOf(AssessValidationError);
   });
 
+  it("rejects delivery-style observations even when the claim is aligned", async () => {
+    await expect(
+      generateValidatedAssessDelta(request, async () => ({
+        claimId: "thesis",
+        quality: "partial",
+        evidenceCited: false,
+        note: "The student sounded confident but paused before answering.",
+      })),
+    ).rejects.toBeInstanceOf(AssessValidationError);
+  });
+
   it("refuses a non-student turn in the answer payload", () => {
     const invalid = structuredClone(request);
     invalid.answerTurns[0].speaker = "agent";

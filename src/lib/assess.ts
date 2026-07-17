@@ -27,7 +27,7 @@ Quality definitions:
 The claimId must equal FOCUS.claimId. evidenceCited means the student actually named or explained evidence/reasoning from the submission; it does not reward delivery style. The note must be one concise, neutral, content-only observation. Set answeredInOtherLanguage only to a language code when the answer materially used another language.`;
 
 const FORBIDDEN_ASSESS_NOTE =
-  /\b(?:ai(?:-generated)?|cheat(?:ing)?|plagiar(?:ism|ized)|authorship|grade|score|verdict|probability)\b/i;
+  /\b(?:ai(?:-generated)?|cheat(?:ing)?|plagiar(?:ism|ized)|authorship|grade|score|verdict|probability|accent|fluency|hesitat(?:e|ion)|fillers?(?:\s+words?)?|confiden(?:ce|t)|paus(?:e|ed|ing)|speaking\s+rate|grammar|english\s+proficiency|language\s+choice)\b/i;
 
 export class AssessValidationError extends Error {
   readonly issues: string[];
@@ -68,7 +68,9 @@ export function getAssessDeltaValidationIssues(
   }
 
   if (FORBIDDEN_ASSESS_NOTE.test(candidate.note)) {
-    issues.push("Assessment note contains forbidden verdict vocabulary.");
+    issues.push(
+      "Assessment note contains forbidden fairness or verdict vocabulary.",
+    );
   }
 
   return issues;
