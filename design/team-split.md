@@ -37,13 +37,15 @@ deployment, video, QA.
   decided" writeup (must be written by whoever drove the session)
 
 ### Dev B — Product surface + ship (own Codex sessions)
-- Screens 1, 2, 3, 5a, 5b per `design/screens-and-copy.md`: teacher setup,
-  analysis review, student consent, student review + challenge flags, teacher
-  dossier view. Build against schema types with mock JSON first — don't wait
-  for A's endpoints.
-- Defense room layout (Screen 4): submission pane + highlight rendering +
-  understanding-map claim cards, driven by SessionState. (A wires the live
-  data into it in Block 3/4 — agree on the SessionState interface FIRST.)
+- Screens 3, 5a, 5b per `design/screens-and-copy.md`: student consent,
+  student review + challenge flags, teacher dossier view. Build against a
+  hand-written mock `Dossier` JSON — don't wait for A's endpoints.
+  (Screens 1–2 and the defense room moved to Dev A's session, which already
+  built the teacher workbench in Block 2 and wires the defense room in
+  Block 3.)
+- Early shipping lane (pull forward, don't leave for Monday): first Vercel
+  deploy of current main, `.env.example`, README skeleton filled as features
+  land, error-state copy from `design/screens-and-copy.md`.
 - Block 6 demo mode: fixture replay with pacing, demo banner, landing entry.
 - Block 7 ship: error states, README (skeleton in `design/submission-kit.md`),
   `.env.example`, Vercel deploy, incognito demo-mode verification.
@@ -71,7 +73,7 @@ deployment, video, QA.
 |---|---|---|
 | **Fri night** | Blocks 0–1: scaffold + voice spike + injection test | Read all design docs; hand-write mock ArgumentGraph + Dossier JSON; start Screen 1/2 against mocks |
 | **Sat AM** | Block 2 analyze endpoint + tests | Screens 3, 5a, 5b against mocks |
-| **Sat PM** | Block 3 examiner wiring + turn capture | Defense-room layout (Screen 4) with map cards on fixture data |
+| **Sat PM** | Block 3 examiner wiring + defense room + turn capture | Screens 3/5a/5b on mock Dossier JSON; first Vercel deploy; voiceover script first draft |
 | **Sat night sync** | Integrate: analyze → analysis-review screen; live turns → defense room | ← same, together |
 | **Sun** | Block 4 assess + orchestrator + tests (hardest block — protect from interruptions) | Block 6 demo mode; then rehearse the defense script twice as the student |
 | **Sun night** | Record the real fixture run together (A drives app, B plays student) → replace `fixtures/demo-defense.json` | ← same, together |
