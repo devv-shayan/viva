@@ -306,8 +306,11 @@ export function DefenseRoom({
             },
           });
 
-          // This is serialized behind the system item. The SDK transport can defer
-          // the response until a prior response has fully finished.
+          // FOCUS correctness relies on ordered transport delivery: this
+          // conversation.item.create must arrive before the response request.
+          // focusSequence serializes client-side sends only; there is no server
+          // acknowledgement here. If a response is ever observed ignoring its
+          // FOCUS, harden this seam by awaiting conversation.item.created first.
           pauseRecoveryRef.current = markAgentResponseRequested(
             pauseRecoveryRef.current,
           );
