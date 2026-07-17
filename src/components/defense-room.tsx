@@ -22,6 +22,13 @@ import { z } from "zod";
 
 import { PassageDocument } from "@/components/passage-document";
 import { Button } from "@/components/ui/button";
+import {
+  getDefenseElapsedMs,
+  isDefenseTimeExpired,
+  pauseDefenseClock,
+  resumeDefenseClock,
+  type DefenseClock,
+} from "@/lib/defense-clock";
 import { vivaModels } from "@/lib/models";
 import {
   getRealtimeResponseDiagnostic,
@@ -65,7 +72,6 @@ type DefenseRoomProps = {
   session: VivaSessionState;
 };
 
-const MAX_DEFENSE_MS = 5 * 60 * 1000;
 const FINAL_AUDIO_DRAIN_TIMEOUT_MS = 8_000;
 const FINAL_AUDIO_PLAYOUT_GRACE_MS = 350;
 const RESUME_FOCUS_INSTRUCTION =
@@ -135,8 +141,12 @@ export function DefenseRoom({
   const studentItemIdsRef = useRef(new Set<string>());
   const agentItemIdsRef = useRef(new Set<string>());
   const focusSequenceRef = useRef(Promise.resolve());
-  const connectionStartedAtRef = useRef<number | null>(null);
-  const connectionOffsetRef = useRef(0);
+  const defenseClockRef = useRef<DefenseClock>({
+    connectionOffsetMs: 0,
+    connectionStartedAtMs: null,
+    pausedMs: 0,
+    pauseStartedAtMs: null,
+  });
   const endRequestedRef = useRef(false);
   const finishedRef = useRef(false);
   const awaitingFinalAudioRef = useRef(false);
@@ -159,16 +169,7 @@ export function DefenseRoom({
   }, [session]);
 
   const timestamp = useCallback(() => {
-    const startedAt = connectionStartedAtRef.current;
-
-    if (startedAt === null) {
-      return connectionOffsetRef.current;
-    }
-
-    return Math.max(
-      0,
-      Math.round(connectionOffsetRef.current + performance.now() - startedAt),
-    );
+    return getDefenseElapsedMs(defenseClockRef.current, performance.now());
   }, []);
 
   const clearFinalAudioTimers = useCallback(() => {
@@ -401,12 +402,18 @@ export function DefenseRoom({
     studentItemIdsRef.current.clear();
     agentItemIdsRef.current.clear();
     focusSequenceRef.current = Promise.resolve();
-    connectionOffsetRef.current = Math.max(
+    const connectionOffsetMs = Math.max(
       0,
       ...sessionStateRef.current.transcript.turns.map((turn) => turn.t),
     );
-    connectionStartedAtRef.current = performance.now();
-    setElapsedMs(connectionOffsetRef.current);
+    const connectionStartedAtMs = performance.now();
+    defenseClockRef.current = {
+      connectionOffsetMs,
+      connectionStartedAtMs,
+      pausedMs: 0,
+      pauseStartedAtMs: null,
+    };
+    setElapsedMs(connectionOffsetMs);
 
     let realtime: RealtimeSession | null = null;
 
@@ -626,9 +633,20 @@ export function DefenseRoom({
     }
 
     const shouldPause = !isPaused;
+    const nowMs = performance.now();
 
     if (shouldPause) {
+      defenseClockRef.current = pauseDefenseClock(
+        defenseClockRef.current,
+        nowMs,
+      );
       realtime.interrupt();
+    } else {
+      defenseClockRef.current = resumeDefenseClock(
+        defenseClockRef.current,
+        nowMs,
+      );
+      setElapsedMs(getDefenseElapsedMs(defenseClockRef.current, nowMs));
     }
 
     realtime.mute(shouldPause);
@@ -637,20 +655,23 @@ export function DefenseRoom({
 
   useEffect(() => {
     const timer = window.setInterval(() => {
-      if (connectionStartedAtRef.current === null || finishedRef.current) {
+      const nowMs = performance.now();
+      const clock = defenseClockRef.current;
+
+      if (clock.connectionStartedAtMs === null || finishedRef.current) {
         return;
       }
 
-      const nextElapsed = timestamp();
+      const nextElapsed = getDefenseElapsedMs(clock, nowMs);
       setElapsedMs(nextElapsed);
 
-      if (nextElapsed >= MAX_DEFENSE_MS) {
+      if (isDefenseTimeExpired(clock, nowMs)) {
         finishAndReview("The five-minute conversation limit has ended.");
       }
     }, 1000);
 
     return () => window.clearInterval(timer);
-  }, [finishAndReview, timestamp]);
+  }, [finishAndReview]);
 
   useEffect(() => {
     return () => {
