@@ -21,7 +21,7 @@ type RubricObjective = {
 };
 ```
 
-## 2. ArgumentGraph (`POST /api/analyze` output — GPT-5.6 Sol)
+## 2. ArgumentGraph (`POST /api/analyze` output — GPT-5.6 Terra)
 
 ```ts
 type PassageRef = { paragraphId: string; quote: string };
@@ -81,7 +81,7 @@ type Focus = {                // orchestrator's directive to the voice agent
 5. Hard budget: ≤6 questions or ≤5 min → `wrap`.
 6. Never two questions in one turn; never re-ask a demonstrated claim.
 
-## 4. `POST /api/assess` (per answer — GPT-5.6 Terra, structured output)
+## 4. `POST /api/assess` (per answer — GPT-5.6 Luna, structured output)
 
 ```ts
 // request
@@ -115,7 +115,7 @@ type Transcript = {
 };
 ```
 
-## 6. Dossier (`POST /api/dossier` — GPT-5.6 Sol, hard-validated)
+## 6. Dossier (`POST /api/dossier` — GPT-5.6 Terra, hard-validated)
 
 ```ts
 type Finding = {

@@ -47,7 +47,7 @@ mid-conversation.
   candidate/coverage data model, citation + verdict-vocabulary validation⟩.
 - **GPT-5.6 at runtime:** argument-graph extraction from the submission,
   per-answer assessment (content-only rubric), and dossier synthesis — all
-  structured outputs. Voice is `gpt-realtime-2.1` over WebRTC.
+  structured outputs. Voice is `gpt-realtime-2.1-mini` over WebRTC.
 
 ## Run locally
     npm install

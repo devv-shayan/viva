@@ -30,7 +30,7 @@ evidence of demonstrated understanding.
 - Students get **challenge rights** (flag a finding as misheard/misjudged) and
   the teacher always makes the human decision.
 - Fairness: Viva assesses **content, not fluency** — not accent, hesitation, or
-  confidence. Students may answer in their own language (gpt-realtime-2.1 is
+  confidence. Students may answer in their own language (gpt-realtime-2.1-mini is
   multilingual). Do NOT claim this eliminates bias; claim it removes the
   documented failure mode of detectors (false-positives on non-native writers).
 - Why now: universities are already returning to oral exams over AI-written
@@ -58,7 +58,7 @@ AI oral assessment. Viva's specific advances — say exactly this, no more:
 ```
 Browser (Next.js / React)
 │
-├── @openai/agents/realtime ⇄ gpt-realtime-2.1 — WebRTC audio + transcription
+├── @openai/agents/realtime ⇄ gpt-realtime-2.1-mini — WebRTC audio + transcription
 │     · client injects [FOCUS] directives from the orchestrator as system
 │       items (mechanic proven in the Block 1 spike before anything rests on it)
 │
@@ -72,14 +72,14 @@ Browser (Next.js / React)
 │
 Next.js API routes (stateless, nothing stored server-side)
 ├── POST /api/realtime-token   ephemeral client secret (key never in browser)
-├── POST /api/analyze          essay + rubric → ArgumentGraph (GPT-5.6 Sol,
+├── POST /api/analyze          essay + rubric → ArgumentGraph (GPT-5.6 Terra,
 │                              structured output: thesis, claims, evidence,
 │                              assumptions, passage anchors)
 ├── POST /api/assess           answer turn + focus + graph → AssessDelta
-│                              (GPT-5.6 Terra: which claim addressed, evidence
+│                              (GPT-5.6 Luna: which claim addressed, evidence
 │                              present?, quality, suggested next move)
 └── POST /api/dossier          transcript + coverage + graph → Dossier
-                               (citations REQUIRED per finding, server-validated,
+                               (GPT-5.6 Terra; citations REQUIRED per finding, server-validated,
                                regenerate on violation)
 
 State: browser (React + localStorage). Delete = truly gone. Vercel free tier.
@@ -123,11 +123,28 @@ multilingual demo beat. Never cut: passage-grounded questions, live
 understanding map, drill-down + one counterfactual, citation-enforced dossier,
 consent/challenge/no-verdict framing.
 
+## Model policy & cost guardrails
+
+- **Voice:** `gpt-realtime-2.1-mini`. It supports the same browser WebRTC,
+  audio, transcription, semantic-VAD, and low-reasoning setup as the larger
+  Realtime 2.1 model at substantially lower published token rates.
+- **High-frequency assessment:** `gpt-5.6-luna` for `/api/assess` — $1 / 1M
+  input tokens and $6 / 1M output tokens. It is the economical choice for a
+  call made after every student answer.
+- **Analysis and dossier:** `gpt-5.6-terra` for `/api/analyze` and
+  `/api/dossier` — $2.50 / 1M input tokens and $15 / 1M output tokens.
+  Reserve Sol ($5 input / $30 output) for a measured quality fallback only.
+- GPT-5.6 reasoning tokens are billed as output tokens; effort changes token
+  volume and latency, not the published per-token rate. Keep Realtime
+  reasoning at `low` for the five-minute defense. Recheck the
+  [OpenAI model catalog](https://developers.openai.com/api/docs/models) before
+  deployment because pricing and availability can change.
+
 ## Tech stack
 
 Next.js 15 TS, Tailwind + shadcn; voice via `@openai/agents/realtime` with
-`gpt-realtime-2.1` (WebRTC + ephemeral tokens); `openai` SDK + zod structured
-outputs; GPT-5.6 (Sol = analyze + dossier, Terra = per-turn assess); Vercel;
+`gpt-realtime-2.1-mini` (WebRTC + ephemeral tokens); `openai` SDK + zod structured
+outputs; GPT-5.6 (Terra = analyze + dossier, Luna = per-turn assess); Vercel;
 all state client-held (React + localStorage). Submission ingestion is
 paste-text for MVP (PDF only if trivial via pdf-parse). The understanding map
 is styled claim cards — no graph library needed. No image models.

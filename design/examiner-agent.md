@@ -1,4 +1,4 @@
-# Viva Examiner — System Instructions (gpt-realtime-2.1)
+# Viva Examiner — System Instructions (gpt-realtime-2.1-mini)
 
 The full instructions string for the `RealtimeAgent`. The code imports this
 verbatim. Tone target: a fair, warm teaching assistant — never a prosecutor.

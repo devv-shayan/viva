@@ -16,7 +16,7 @@ block; bring failures to Claude Code instead of letting Codex thrash.
 
 ## Block 1 — Voice spike (Fri night — GO/NO-GO gate)
 > 1) `POST /api/realtime-token`: call OpenAI `POST /v1/realtime/client_secrets`
-> (model `gpt-realtime-2.1`), return ephemeral key. 2) `/spike` page: Connect
+> (model `gpt-realtime-2.1-mini`), return ephemeral key. 2) `/spike` page: Connect
 > button → `RealtimeAgent` (one-sentence test persona) + `RealtimeSession` via
 > `@openai/agents/realtime`, WebRTC, audio both ways. 3) Log every
 > transcription event with clear per-turn boundaries for both speakers.
@@ -29,7 +29,7 @@ stop and redesign with Claude before anything else.**
 
 ## Block 2 — Analyze pipeline + teacher setup (Sat morning)
 > Paste: Submission/RubricObjective/ArgumentGraph/PassageRef from schemas.md.
-> Build `POST /api/analyze` with GPT-5.6 (sol) structured outputs. Server-side
+> Build `POST /api/analyze` with GPT-5.6 (terra) structured outputs. Server-side
 > validation: every PassageRef.quote must be a verbatim substring of the named
 > paragraph — reject and regenerate (max 2) otherwise. UI screen 1 (teacher
 > setup) and screen 2 (analysis review) per screens-and-copy.md: paste essay
@@ -60,7 +60,7 @@ localStorage; highlight moves when Focus changes; end_defense transitions.
 ## Block 4 — Assess + orchestrator (Sun — hardest block)
 > Paste: CoverageEntry/MoveType/Focus/AssessDelta + orchestrator policy from
 > schemas.md.
-> Build `POST /api/assess` (GPT-5.6 terra, structured output; prompt must
+> Build `POST /api/assess` (GPT-5.6 luna, structured output; prompt must
 > forbid weighting fluency/accent/hesitation/confidence — content only).
 > Client: on each completed student answer → /api/assess → update coverage →
 > orchestrator (pure function `nextFocus(coverage, graph, elapsed): Focus |
@@ -77,7 +77,7 @@ path; map transitions amber/green on camera; agent never reads FOCUS aloud.
 ## Block 5 — Dossier + teacher review (Mon morning)
 > Paste: Finding/Dossier + validation rules from schemas.md; dossier copy from
 > screens-and-copy.md.
-> `POST /api/dossier` (GPT-5.6 sol, structured output) + hard validation:
+> `POST /api/dossier` (GPT-5.6 terra, structured output) + hard validation:
 > unknown turn ids, non-matching passage quotes, or verdict vocabulary
 > (regex: cheat|AI-generated|plagiar|authorship|%|grade) → reject, regenerate
 > (max 2), then fail loudly. Student review screen (transcript + flag-a-finding
