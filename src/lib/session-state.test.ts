@@ -7,6 +7,7 @@ import type {
 } from "./analysis-types";
 import {
   activatePendingFocus,
+  applyAssessDelta,
   appendRealtimeResponseDiagnostic,
   appendTranscriptTurn,
   createDefenseSession,
@@ -191,6 +192,27 @@ describe("Viva defense session state", () => {
     expect(createFocusForClaim(graph, "not-a-claim")).toBeUndefined();
     expect(parseVivaSession(serializeVivaSession(session))).toEqual(session);
     expect(parseVivaSession("not json")).toBeNull();
+  });
+
+  it("updates coverage from content assessment only for the active approved focus", () => {
+    const active = activatePendingFocus(createSession());
+    const assessed = applyAssessDelta(active, {
+      claimId: "thesis",
+      quality: "vague",
+      evidenceCited: false,
+      note: "Relevant reasoning needs one concrete detail.",
+    });
+    const mismatched = applyAssessDelta(assessed, {
+      claimId: "c1",
+      quality: "demonstrated",
+      evidenceCited: true,
+      note: "Should not apply outside the active focus.",
+    });
+
+    expect(assessed.coverage.find((entry) => entry.claimId === "thesis")?.status).toBe(
+      "partial",
+    );
+    expect(mismatched).toEqual(assessed);
   });
 
   it("keeps capped or failed Realtime replies in the local consent record", () => {

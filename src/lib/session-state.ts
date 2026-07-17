@@ -12,6 +12,7 @@ import {
   type RubricObjective,
   type Submission,
 } from "./analysis-types";
+import type { AssessDelta } from "./assess-types";
 
 export const VIVA_SESSION_STORAGE_KEY = "viva:session:v1";
 const STORAGE_VERSION = 1;
@@ -475,6 +476,36 @@ export function appendRealtimeResponseDiagnostic(
       ...session.transcript,
       responseDiagnostics,
     },
+  };
+}
+
+export function applyAssessDeltaToCoverage(
+  coverage: CoverageEntry[],
+  delta: AssessDelta,
+): CoverageEntry[] {
+  const status: ClaimStatus =
+    delta.quality === "demonstrated"
+      ? "demonstrated"
+      : delta.quality === "partial" || delta.quality === "vague"
+        ? "partial"
+        : "needs_review";
+
+  return coverage.map((entry) =>
+    entry.claimId === delta.claimId ? { ...entry, status } : entry,
+  );
+}
+
+export function applyAssessDelta(
+  session: VivaSessionState,
+  delta: AssessDelta,
+): VivaSessionState {
+  if (session.activeFocus?.claimId !== delta.claimId) {
+    return session;
+  }
+
+  return {
+    ...session,
+    coverage: applyAssessDeltaToCoverage(session.coverage, delta),
   };
 }
 
