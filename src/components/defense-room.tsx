@@ -31,6 +31,13 @@ import {
 } from "@/lib/defense-clock";
 import { vivaModels } from "@/lib/models";
 import {
+  consumePauseFocusRecovery,
+  createPauseRecoveryState,
+  markAgentResponseRequested,
+  markPauseInterruptRequested,
+  recordRealtimeResponseDone,
+} from "@/lib/pause-recovery";
+import {
   getRealtimeResponseDiagnostic,
   type RealtimeResponse,
 } from "@/lib/realtime-session";
@@ -154,6 +161,7 @@ export function DefenseRoom({
   const finalAudioDrainTimeoutRef = useRef<number | null>(null);
   const finalAudioFinishTimerRef = useRef<number | null>(null);
   const connectionAttemptRef = useRef(0);
+  const pauseRecoveryRef = useRef(createPauseRecoveryState());
 
   const [connectionStatus, setConnectionStatus] =
     useState<ConnectionStatus>("idle");
@@ -163,6 +171,8 @@ export function DefenseRoom({
   const [error, setError] = useState<string | null>(null);
   const [isPaused, setIsPaused] = useState(false);
   const [isFinishing, setIsFinishing] = useState(false);
+  const [shouldReaskFocusAfterPause, setShouldReaskFocusAfterPause] =
+    useState(false);
 
   useEffect(() => {
     sessionStateRef.current = session;
@@ -298,6 +308,10 @@ export function DefenseRoom({
 
           // This is serialized behind the system item. The SDK transport can defer
           // the response until a prior response has fully finished.
+          pauseRecoveryRef.current = markAgentResponseRequested(
+            pauseRecoveryRef.current,
+          );
+
           if (realtime.transport.requestResponse) {
             realtime.transport.requestResponse();
           } else {
@@ -313,6 +327,33 @@ export function DefenseRoom({
     },
     [onActivateFocus],
   );
+
+  useEffect(() => {
+    if (
+      isPaused ||
+      !shouldReaskFocusAfterPause ||
+      connectionStatus !== "connected" ||
+      endRequestedRef.current ||
+      finishedRef.current
+    ) {
+      return;
+    }
+
+    const recovery = consumePauseFocusRecovery(pauseRecoveryRef.current);
+    pauseRecoveryRef.current = recovery.state;
+    setShouldReaskFocusAfterPause(false);
+
+    if (!recovery.shouldReaskFocus) {
+      return;
+    }
+
+    const current = sessionStateRef.current;
+    const focus = current.activeFocus ?? current.pendingFocus;
+
+    if (focus) {
+      requestReplyForFocus(focus, { resume: true });
+    }
+  }, [connectionStatus, isPaused, requestReplyForFocus, shouldReaskFocusAfterPause]);
 
   const handleStudentTranscript = useCallback(
     (itemId: string, transcript: string) => {
@@ -402,6 +443,8 @@ export function DefenseRoom({
     studentItemIdsRef.current.clear();
     agentItemIdsRef.current.clear();
     focusSequenceRef.current = Promise.resolve();
+    pauseRecoveryRef.current = createPauseRecoveryState();
+    setShouldReaskFocusAfterPause(false);
     const connectionOffsetMs = Math.max(
       0,
       ...sessionStateRef.current.transcript.turns.map((turn) => turn.t),
@@ -496,6 +539,15 @@ export function DefenseRoom({
         }
 
         if (raw.type === "response.done") {
+          pauseRecoveryRef.current = recordRealtimeResponseDone(
+            pauseRecoveryRef.current,
+            raw.response,
+          );
+
+          if (pauseRecoveryRef.current.shouldReaskFocus) {
+            setShouldReaskFocusAfterPause(true);
+          }
+
           const diagnostic = getRealtimeResponseDiagnostic(raw.response);
           const persistedDiagnostic = diagnosticForPersistence(
             raw.response,
@@ -640,6 +692,10 @@ export function DefenseRoom({
         defenseClockRef.current,
         nowMs,
       );
+      pauseRecoveryRef.current = markPauseInterruptRequested(
+        pauseRecoveryRef.current,
+      );
+      setShouldReaskFocusAfterPause(false);
       realtime.interrupt();
     } else {
       defenseClockRef.current = resumeDefenseClock(
