@@ -15,6 +15,7 @@ import {
   createFocusForClaim,
   createPreviewNextFocus,
   finishDefense,
+  completeStudentReview,
   parseVivaSession,
   queueFocus,
   saveDossier,
@@ -382,7 +383,7 @@ describe("Viva defense session state", () => {
         "Viva reports what the student could and couldn't explain about their submitted work, with links to the exact passages and answers. It does not detect AI use, determine authorship, or make judgments — those decisions belong to the instructor.",
     };
 
-    const saved = saveDossier(finishDefense(session), dossier);
+    const saved = saveDossier(completeStudentReview(finishDefense(session)), dossier);
     const challenged = saveStudentChallenge(
       saved,
       "c1",
@@ -447,7 +448,7 @@ describe("Viva defense session state", () => {
       ["student-c1"],
     );
 
-    const saved = saveDossier(finishDefense(session), {
+    const saved = saveDossier(completeStudentReview(finishDefense(session)), {
       summary: "The record includes a follow-up on the London evidence.",
       findings: [
         {

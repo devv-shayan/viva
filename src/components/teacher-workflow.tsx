@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { WorkspaceBanner } from "@/components/workspace-banner";
 import {
   PassageDocument,
   type PassageHighlight,
@@ -41,6 +42,16 @@ type AnalyzeResponse = {
 
 type Screen = "setup" | "review";
 
+async function readAnalyzeResponse(
+  response: Response,
+): Promise<AnalyzeResponse & { error?: string }> {
+  try {
+    return (await response.json()) as AnalyzeResponse & { error?: string };
+  } catch {
+    throw new Error("Viva could not create the essay overview. Please try again.");
+  }
+}
+
 function cloneSampleRubric(): RubricObjective[] {
   return sampleRubric.map((objective) => ({ ...objective }));
 }
@@ -51,10 +62,10 @@ function claimHighlights(claim: Claim | undefined): PassageHighlight[] {
   }
 
   return [
-    { ...claim.passage, label: "Claim anchor" },
+    { ...claim.passage, label: "Main point in essay" },
     ...claim.evidence.map((item) => ({
       ...item.passage,
-      label: "Supporting evidence anchor",
+      label: "Evidence in essay",
     })),
   ];
 }
@@ -118,7 +129,7 @@ export default function TeacherWorkflow({
     setEssay(sampleEssay);
     setRubric(cloneSampleRubric());
     setError(null);
-    setNotice("Sample essay loaded. Adjust the rubric if you want to change the lens.");
+    setNotice("Sample essay loaded. Change the discussion topics if you need to.");
   }
 
   function updateRubric(index: number, text: string) {
@@ -135,17 +146,17 @@ export default function TeacherWorkflow({
     setNotice(null);
 
     if (!studentName.trim() || !essay.trim()) {
-      setError("Add a student name and the submission before analyzing.");
+      setError("Add a student name and essay before creating the overview.");
       return;
     }
 
     if (essay.trim().length < 80) {
-      setError("Paste a longer submission so Viva can identify a real argument.");
+      setError("Paste a longer essay so Viva has enough text to work with.");
       return;
     }
 
     if (rubric.some((objective) => objective.text.trim().length < 3)) {
-      setError("Each rubric objective needs a short description.");
+      setError("Each discussion topic needs a short description.");
       return;
     }
 
@@ -165,12 +176,10 @@ export default function TeacherWorkflow({
           })),
         }),
       });
-      const payload = (await response.json()) as AnalyzeResponse & {
-        error?: string;
-      };
+      const payload = await readAnalyzeResponse(response);
 
       if (!response.ok) {
-        throw new Error(payload.error || "Viva could not analyze this submission.");
+        throw new Error(payload.error || "Viva could not create the essay overview.");
       }
 
       setResult(payload);
@@ -180,7 +189,7 @@ export default function TeacherWorkflow({
       setError(
         caughtError instanceof Error
           ? caughtError.message
-          : "Viva could not analyze this submission.",
+          : "Viva could not create the essay overview.",
       );
     } finally {
       setIsAnalyzing(false);
@@ -189,7 +198,7 @@ export default function TeacherWorkflow({
 
   function returnToSetup() {
     setScreen("setup");
-    setNotice("You can adjust the rubric and analyze the same submission again.");
+    setNotice("You can change the discussion topics and create a new overview.");
   }
 
   function startDefense() {
@@ -208,35 +217,35 @@ export default function TeacherWorkflow({
     const claims = [result.graph.thesis, ...result.graph.claims];
 
     return (
-      <main className="min-h-screen bg-[#f6f3ed] px-4 py-6 text-[#25231f] sm:px-8 lg:px-12">
+      <main className="min-h-screen bg-[#ffffff] px-4 py-6 text-[#171717] sm:px-8 lg:px-12">
         <div className="mx-auto max-w-7xl">
-          <header className="flex flex-col gap-5 border-b border-[#d8d0c2] pb-6 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <p className="mb-2 text-xs font-semibold tracking-[0.18em] text-[#746a5b] uppercase">
-                Viva / teacher workbench
-              </p>
-              <h1 className="font-serif text-3xl tracking-[-0.02em] sm:text-4xl">
-                Argument review
-              </h1>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button onClick={returnToSetup} size="lg" variant="outline">
-                Edit rubric
-              </Button>
-              <Button className="bg-[#1e463e] text-white hover:bg-[#173830]" onClick={startDefense} size="lg">
-                Start the defense <ArrowRight />
-              </Button>
-            </div>
-          </header>
-
+          <WorkspaceBanner
+            actions={
+              <>
+                <Button onClick={returnToSetup} size="lg" variant="outline">
+                  Change discussion topics
+                </Button>
+                <Button
+                  className="bg-[#171717] text-white hover:bg-[#303030]"
+                  onClick={startDefense}
+                  size="lg"
+                >
+                  Send to student <ArrowRight />
+                </Button>
+              </>
+            }
+            audience="Teacher workspace"
+            description="Review the main points and the source passages before you invite the student to explain their thinking."
+            tip="When the plan looks right, send the student to begin the conversation."
+            title="Your conversation is ready."
+          />
           <section className="grid gap-8 py-8 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
             <div className="lg:pr-4">
-              <p className="max-w-xl font-serif text-xl leading-8 text-[#413d35]">
-                Here&apos;s the argument Viva found. The defense will only ask about
-                what&apos;s on this page.
+              <p className="max-w-xl font-serif text-xl leading-8 text-[#292824]">
+                Review the main points before you invite the student. The conversation only uses evidence from this essay.
               </p>
 
-              <div className="mt-7 border-y border-[#d8d0c2]">
+              <div className="mt-7 border-y border-[#e7e3d8]">
                 {claims.map((claim) => {
                   const isActive = claim.id === activeClaimId;
                   const isWeakSpot = result.graph.weakSpots.includes(claim.id);
@@ -244,8 +253,8 @@ export default function TeacherWorkflow({
 
                   return (
                     <button
-                      className={`group w-full border-b border-[#e1dbd0] px-1 py-5 text-left transition-colors last:border-b-0 hover:bg-[#efe9de] focus-visible:bg-[#efe9de] focus-visible:outline-none ${
-                        isActive ? "bg-[#ede5d6]" : ""
+                      className={`group w-full border-b border-[#eeeae2] px-1 py-5 text-left transition-colors last:border-b-0 hover:bg-[#fff8dc] focus-visible:bg-[#fff8dc] focus-visible:outline-none ${
+                        isActive ? "bg-[#fff8dc]" : ""
                       }`}
                       key={claim.id}
                       onClick={() => setActiveClaimId(claim.id)}
@@ -254,20 +263,20 @@ export default function TeacherWorkflow({
                     >
                       <div className="flex items-center justify-between gap-4">
                         <span className="text-xs font-semibold tracking-[0.14em] text-[#766d60] uppercase">
-                          {isThesis ? "Central thesis" : claim.id}
+                          {isThesis ? "Main point" : claim.id}
                         </span>
                         <span
                           className={`rounded-full px-2 py-1 text-[0.7rem] font-semibold tracking-[0.08em] uppercase ${
                             isWeakSpot
-                              ? "bg-[#f0d795] text-[#664b08]"
-                              : "bg-[#dcebe2] text-[#23513d]"
+                              ? "bg-[#FBE994] text-[#5f5018]"
+                              : "bg-[#fff8dc] text-[#171717]"
                           }`}
                         >
-                          {isWeakSpot ? "Explore in defense" : "Anchored"}
+                          {isWeakSpot ? "Ask about this" : "Clear on page"}
                         </span>
                       </div>
 
-                      <p className="mt-2 font-serif text-lg leading-7 text-[#25231f] group-hover:translate-x-0.5 transition-transform">
+                      <p className="mt-2 font-serif text-lg leading-7 text-[#171717] group-hover:translate-x-0.5 transition-transform">
                         {claim.text}
                       </p>
 
@@ -284,7 +293,7 @@ export default function TeacherWorkflow({
 
                       <div className="mt-3 flex items-center gap-2 text-xs text-[#766d60]">
                         <Quote className="size-3.5" />
-                        <span>{claim.passage.paragraphId.toUpperCase()} selected in submission</span>
+                        <span>{claim.passage.paragraphId.toUpperCase()} selected in the essay</span>
                       </div>
 
                       {claim.evidence.length > 0 ? (
@@ -296,8 +305,8 @@ export default function TeacherWorkflow({
                           ))}
                         </div>
                       ) : (
-                        <p className="mt-3 border-l-2 border-[#d6ae48] pl-3 text-sm leading-6 text-[#765611]">
-                          No anchored supporting evidence found in this submission.
+                        <p className="mt-3 border-l-2 border-[#d6ae48] pl-3 text-sm leading-6 text-[#5f5018]">
+                          No supporting evidence was clearly found for this point.
                         </p>
                       )}
                     </button>
@@ -306,21 +315,21 @@ export default function TeacherWorkflow({
               </div>
             </div>
 
-            <article className="border border-[#d8d0c2] bg-[#fcfaf6] p-5 shadow-[0_14px_35px_rgba(70,55,30,0.06)] sm:p-8">
-              <div className="flex flex-col gap-4 border-b border-[#e0d9ce] pb-5 sm:flex-row sm:items-start sm:justify-between">
+            <article className="rounded-[1.5rem] border border-[#e7e3d8] bg-[#ffffff] p-5 shadow-[0_14px_35px_rgba(70,55,30,0.06)] sm:p-8">
+              <div className="flex flex-col gap-4 border-b border-[#eeeae2] pb-5 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <div className="flex items-center gap-2 text-xs font-semibold tracking-[0.14em] text-[#746a5b] uppercase">
                     <FileText className="size-3.5" />
-                    Submitted essay
+                    Essay
                   </div>
                   <h2 className="mt-2 font-serif text-2xl leading-tight">
                     {result.submission.title}
                   </h2>
                   <p className="mt-1 text-sm text-[#6d6457]">{result.submission.studentName}</p>
                 </div>
-                <span className="inline-flex w-fit items-center gap-2 bg-[#f3e2aa] px-3 py-2 text-xs font-medium text-[#654d14]">
+                <span className="inline-flex w-fit items-center gap-2 bg-[#FBE994] px-3 py-2 text-xs font-medium text-[#5f5018]">
                   <Sparkles className="size-3.5" />
-                  Exact-text anchors
+                  Evidence on page
                 </span>
               </div>
 
@@ -333,8 +342,8 @@ export default function TeacherWorkflow({
           </section>
 
           {notice ? (
-            <div className="flex items-start gap-3 border-t border-[#d8d0c2] py-5 text-sm text-[#5d5548]" role="status">
-              <Check className="mt-0.5 size-4 text-[#23513d]" />
+            <div className="flex items-start gap-3 border-t border-[#e7e3d8] py-5 text-sm text-[#5d5548]" role="status">
+              <Check className="mt-0.5 size-4 text-[#171717]" />
               <p>{notice}</p>
             </div>
           ) : null}
@@ -344,55 +353,44 @@ export default function TeacherWorkflow({
   }
 
   return (
-    <main className="min-h-screen bg-[#f6f3ed] px-4 py-6 text-[#25231f] sm:px-8 lg:px-12">
+    <main className="min-h-screen bg-[#ffffff] px-4 py-6 text-[#171717] sm:px-8 lg:px-12">
       <div className="mx-auto max-w-5xl">
-        <header className="border-b border-[#d8d0c2] pb-8">
-          <p className="mb-4 text-xs font-semibold tracking-[0.18em] text-[#746a5b] uppercase">
-            Viva / teacher workbench
-          </p>
-          <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <h1 className="max-w-3xl font-serif text-4xl leading-[1.04] tracking-[-0.03em] sm:text-5xl">
-                Viva — evidence of understanding, not accusations.
-              </h1>
-              <p className="mt-4 max-w-2xl text-base leading-7 text-[#655d52]">
-                Prepare a fair oral defense from the argument that is actually on the
-                page. Viva maps claims, evidence, and assumptions; it does not make
-                authorship or AI-detection verdicts.
-              </p>
-            </div>
+        <WorkspaceBanner
+          actions={
             <Button className="w-fit" onClick={loadSample} size="lg" variant="outline">
               <BookOpen /> Load sample essay
             </Button>
-          </div>
-        </header>
-
-        <form className="py-8" onSubmit={analyze}>
+          }
+          audience="Teacher workspace"
+          description="Paste an essay and choose what matters. Viva keeps every question tied to the ideas and evidence on the page."
+          tip="Add a student, the essay, and three discussion topics to create the overview."
+          title="Prepare a fair conversation."
+        />
+        <form className="pb-8 pt-8" onSubmit={analyze}>
           <div className="grid gap-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(17rem,0.85fr)]">
             <section>
               <div className="flex items-baseline justify-between gap-4">
                 <label className="font-serif text-2xl" htmlFor="submission">
-                  The submission
+                  Paste the essay
                 </label>
                 <span className="text-xs text-[#7a7062]">{essay.trim().length.toLocaleString()} characters</span>
               </div>
               <Textarea
-                className="mt-3 min-h-[27rem] resize-y rounded-none border-[#cfc5b7] bg-[#fcfaf6] p-4 font-serif leading-7 shadow-[0_10px_30px_rgba(70,55,30,0.04)]"
+                className="mt-3 min-h-[27rem] resize-y rounded-xl border-[#d8d3c8] bg-[#ffffff] p-4 font-serif leading-7 shadow-[0_10px_30px_rgba(70,55,30,0.04)]"
                 id="submission"
                 onChange={(event) => setEssay(event.target.value)}
                 placeholder="Paste the student's essay here…"
                 value={essay}
               />
               <p className="mt-3 text-sm leading-6 text-[#746a5b]">
-                Viva separates paragraphs before analysis and only accepts findings with
-                exact text anchors.
+                Viva looks only at this essay. Every point shown later links back to the exact passage it came from.
               </p>
             </section>
 
-            <aside className="border-t border-[#d8d0c2] pt-5 lg:border-t-0 lg:border-l lg:pl-8 lg:pt-0">
-              <h2 className="font-serif text-2xl">Teacher setup</h2>
+            <aside className="border-t border-[#e7e3d8] pt-5 lg:border-t-0 lg:border-l lg:pl-8 lg:pt-0">
+              <h2 className="font-serif text-2xl">Conversation setup</h2>
               <p className="mt-2 text-sm leading-6 text-[#746a5b]">
-                Set the student and the standards that make this defense meaningful.
+                Add the student&apos;s name and the three things you want to discuss.
               </p>
 
               <div className="mt-6 space-y-5">
@@ -401,7 +399,7 @@ export default function TeacherWorkflow({
                     Student name
                   </span>
                   <Input
-                    className="rounded-none border-[#cfc5b7] bg-[#fcfaf6]"
+                    className="rounded-xl border-[#d8d3c8] bg-[#ffffff]"
                     id="student-name"
                     onChange={(event) => setStudentName(event.target.value)}
                     placeholder="Areeba Khan"
@@ -414,7 +412,7 @@ export default function TeacherWorkflow({
                     Essay title
                   </span>
                   <Input
-                    className="rounded-none border-[#cfc5b7] bg-[#fcfaf6]"
+                    className="rounded-xl border-[#d8d3c8] bg-[#ffffff]"
                     id="submission-title"
                     onChange={(event) => setTitle(event.target.value)}
                     placeholder="Optional"
@@ -425,8 +423,8 @@ export default function TeacherWorkflow({
 
               <div className="mt-8">
                 <div className="flex items-center gap-2">
-                  <h3 className="font-serif text-xl">Rubric objectives</h3>
-                  <span className="text-xs text-[#7a7062]">three lenses</span>
+                  <h3 className="font-serif text-xl">What you want to discuss</h3>
+                  <span className="text-xs text-[#7a7062]">3 topics</span>
                 </div>
                 <div className="mt-3 space-y-3">
                   {rubric.map((objective, index) => (
@@ -435,7 +433,7 @@ export default function TeacherWorkflow({
                         {objective.id}
                       </span>
                       <Input
-                        className="rounded-none border-[#cfc5b7] bg-[#fcfaf6]"
+                        className="rounded-xl border-[#d8d3c8] bg-[#ffffff]"
                         id={`rubric-${objective.id}`}
                         onChange={(event) => updateRubric(index, event.target.value)}
                         value={objective.text}
@@ -446,32 +444,31 @@ export default function TeacherWorkflow({
               </div>
 
               {error ? (
-                <div className="mt-6 flex gap-3 border-l-2 border-[#c6942a] bg-[#fff5d8] p-3 text-sm leading-6 text-[#644c16]" role="alert">
+                <div className="mt-6 flex gap-3 border-l-2 border-[#c6942a] bg-[#fff5d8] p-3 text-sm leading-6 text-[#5f5018]" role="alert">
                   <CircleAlert className="mt-0.5 size-4 shrink-0" />
                   <p>{error}</p>
                 </div>
               ) : null}
 
               {notice ? (
-                <div className="mt-6 flex gap-3 border-l-2 border-[#87a692] bg-[#edf5ee] p-3 text-sm leading-6 text-[#365945]" role="status">
+                <div className="mt-6 flex gap-3 border-l-2 border-[#87a692] bg-[#fff8dc] p-3 text-sm leading-6 text-[#554b28]" role="status">
                   <Check className="mt-0.5 size-4 shrink-0" />
                   <p>{notice}</p>
                 </div>
               ) : null}
 
               <Button
-                className="mt-7 w-full bg-[#1e463e] text-white hover:bg-[#173830]"
+                className="mt-7 w-full bg-[#171717] text-white hover:bg-[#303030]"
                 disabled={isAnalyzing}
                 size="lg"
                 type="submit"
               >
                 {isAnalyzing ? <LoaderCircle className="animate-spin" /> : <Sparkles />}
-                {isAnalyzing ? "Mapping the argument…" : "Analyze the submission"}
+                {isAnalyzing ? "Preparing overview…" : "Create essay overview"}
                 {!isAnalyzing ? <ArrowRight /> : null}
               </Button>
               <p className="mt-3 text-center text-xs leading-5 text-[#7a7062]">
-                The analysis is evidence-grounded and stays on your device until you
-                choose to run it.
+                The overview is based on the text you provide. It does not make authorship or AI-detection decisions.
               </p>
             </aside>
           </div>

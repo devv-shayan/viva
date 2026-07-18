@@ -5,7 +5,11 @@ import {
   AssessValidationError,
   generateValidatedAssessDelta,
 } from "./assess";
-import { AssessRequestSchema, type AssessRequest } from "./assess-types";
+import {
+  AssessModelOutputSchema,
+  AssessRequestSchema,
+  type AssessRequest,
+} from "./assess-types";
 
 const request: AssessRequest = AssessRequestSchema.parse({
   answerTurns: [
@@ -102,6 +106,22 @@ describe("Viva answer assessment", () => {
     expect(ASSESS_INSTRUCTIONS).toContain("verdicts");
   });
 
+  it("uses a required nullable language field for OpenAI structured output", () => {
+    const base = {
+      claimId: "thesis",
+      quality: "demonstrated" as const,
+      evidenceCited: true,
+      note: "Explained the road-space reasoning behind the central claim.",
+    };
+
+    expect(
+      AssessModelOutputSchema.safeParse({
+        ...base,
+        answeredInOtherLanguage: null,
+      }).success,
+    ).toBe(true);
+    expect(AssessModelOutputSchema.safeParse(base).success).toBe(false);
+  });
   it("accepts a neutral, focus-aligned assessment", async () => {
     await expect(
       generateValidatedAssessDelta(request, async () => ({

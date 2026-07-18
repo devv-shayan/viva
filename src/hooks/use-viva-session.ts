@@ -11,6 +11,7 @@ import {
   createDossierRequest,
   createDefenseSession,
   finishDefense,
+  completeStudentReview as persistStudentReviewCompletion,
   parseVivaSession,
   queueFocus,
   saveDossier as persistDossier,
@@ -130,9 +131,25 @@ export function useVivaSession() {
     [commit],
   );
 
+  const completeStudentReview = useCallback(() => {
+    const next = commit((current) =>
+      current ? persistStudentReviewCompletion(current) : current,
+    );
+
+    if (next) {
+      window.localStorage.setItem(
+        VIVA_SESSION_STORAGE_KEY,
+        serializeVivaSession(next),
+      );
+    }
+
+    return next;
+  }, [commit]);
   const getDossierRequest = useCallback(() => {
     const current = sessionRef.current;
-    return current ? createDossierRequest(current) : null;
+    return current?.phase === "student_review" && current.studentReviewCompletedAt
+      ? createDossierRequest(current)
+      : null;
   }, []);
 
   const saveDossier = useCallback(
@@ -168,6 +185,7 @@ export function useVivaSession() {
     appendTurn,
     clearSession,
     completeDefense,
+    completeStudentReview,
     hydrated,
     getDossierRequest,
     saveDossier,

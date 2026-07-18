@@ -22,6 +22,7 @@ import { z } from "zod";
 
 import { PassageDocument } from "@/components/passage-document";
 import { Button } from "@/components/ui/button";
+import { WorkspaceBanner } from "@/components/workspace-banner";
 import {
   createAssessLatencyMetrics,
   requestAssessment,
@@ -113,6 +114,17 @@ function displayTime(milliseconds: number) {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
+function focusMoveLabel(move: Focus["move"]) {
+  const labels: Record<Focus["move"], string> = {
+    grounded_question: "Starting point",
+    drill_down: "A little deeper",
+    counterfactual: "Consider another view",
+    wrap: "Bringing it together",
+  };
+
+  return labels[move];
 }
 
 function focusForWrap(session: VivaSessionState) {
@@ -1067,60 +1079,53 @@ export function DefenseRoom({
   const isResumingDefense = shouldResumeDefense(session);
 
   return (
-    <main className="min-h-screen bg-[#f6f3ed] px-4 py-5 text-[#25231f] sm:px-6 lg:px-8">
+    <main className="min-h-screen bg-[#ffffff] px-4 py-5 text-[#171717] sm:px-6 lg:px-8">
       <div className="mx-auto max-w-[96rem]">
-        <header className="flex flex-col gap-4 border-b border-[#d8d0c2] pb-5 xl:flex-row xl:items-end xl:justify-between">
-          <div>
-            <p className="text-xs font-semibold tracking-[0.18em] text-[#746a5b] uppercase">
-              Viva / live defense
-            </p>
-            <h1 className="mt-2 font-serif text-3xl tracking-[-0.02em] sm:text-4xl">
-              {session.submission.title}
-            </h1>
-            <p className="mt-2 text-sm text-[#655d52]">
-              {session.submission.studentName} · Questions stay inside the highlighted passage.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-2 border border-[#d4cbbb] bg-[#fcfaf6] px-3 py-2 text-sm text-[#554e43]">
-              <Clock3 className="size-4 text-[#746a5b]" /> {displayTime(elapsedMs)} / 5:00
-            </span>
-            <span
-              className={`inline-flex items-center gap-2 px-3 py-2 text-sm font-medium ${
-                isConnected
-                  ? "bg-[#dcebe2] text-[#23513d]"
-                  : connectionStatus === "error"
-                    ? "bg-[#fff0cd] text-[#765611]"
-                    : "bg-[#ece7dd] text-[#625a4d]"
-              }`}
-            >
+        <WorkspaceBanner
+          actions={
+            <>
+              <span className="inline-flex items-center gap-2 rounded-full border border-[#e7e3d8] bg-white px-3 py-2 text-sm text-[#554e43]">
+                <Clock3 className="size-4 text-[#746a5b]" /> {displayTime(elapsedMs)} / 5:00
+              </span>
               <span
-                className={`size-2 rounded-full ${
-                  isConnected ? "bg-[#2e7a56]" : "bg-[#9c907f]"
+                className={`inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm font-medium ${
+                  isConnected
+                    ? "bg-[#fff8dc] text-[#171717]"
+                    : connectionStatus === "error"
+                      ? "bg-[#fff8dc] text-[#5f5018]"
+                      : "bg-[#ece7dd] text-[#625a4d]"
                 }`}
-              />
-              {isPaused ? "Paused" : connectionStatus}
-            </span>
-          </div>
-        </header>
-
+              >
+                <span
+                  className={`size-2 rounded-full ${
+                    isConnected ? "bg-[#2e7a56]" : "bg-[#9c907f]"
+                  }`}
+                />
+                {isPaused ? "Paused" : connectionStatus}
+              </span>
+            </>
+          }
+          audience="Student workspace"
+          description="Explain the highlighted part of the essay in your own words. Viva only asks about ideas that are on the page."
+          tip="Take your time. You can pause if you need a moment before you answer."
+          title="Explain what you mean."
+        />
         <section className="grid gap-6 py-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(19rem,0.65fr)]">
-          <article className="border border-[#d8d0c2] bg-[#fcfaf6] p-5 shadow-[0_14px_35px_rgba(70,55,30,0.05)] sm:p-7">
-            <div className="flex flex-col gap-3 border-b border-[#e0d9ce] pb-5 sm:flex-row sm:items-start sm:justify-between">
+          <article className="rounded-[1.5rem] border border-[#e7e3d8] bg-[#ffffff] p-5 shadow-[0_14px_35px_rgba(70,55,30,0.05)] sm:p-7">
+            <div className="flex flex-col gap-3 border-b border-[#eeeae2] pb-5 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <div className="flex items-center gap-2 text-xs font-semibold tracking-[0.14em] text-[#746a5b] uppercase">
-                  <FileText className="size-3.5" /> Submission
+                  <FileText className="size-3.5" /> Essay
                 </div>
-                <p className="mt-2 font-serif text-xl leading-7 text-[#413d35]">
+                <p className="mt-2 font-serif text-xl leading-7 text-[#292824]">
                   {activeFocus
-                    ? "The amber passage is the only place Viva is exploring right now."
-                    : "Viva will highlight the passage it is discussing."}
+                    ? "Viva is asking about the highlighted text right now."
+                    : "Viva will highlight the part of the essay it is discussing."}
                 </p>
               </div>
               {activeFocus ? (
-                <span className="w-fit bg-[#f3e2aa] px-3 py-2 text-xs font-semibold tracking-[0.1em] text-[#654d14] uppercase">
-                  {activeFocus.move.replace("_", " ")}
+                <span className="w-fit bg-[#FBE994] px-3 py-2 text-xs font-semibold tracking-[0.1em] text-[#5f5018] uppercase">
+                  {focusMoveLabel(activeFocus.move)}
                 </span>
               ) : null}
             </div>
@@ -1132,12 +1137,12 @@ export function DefenseRoom({
             />
           </article>
 
-          <aside className="border border-[#d8d0c2] bg-[#fcfaf6] p-5 xl:sticky xl:top-5 xl:h-fit">
+          <aside className="rounded-[1.5rem] border border-[#e7e3d8] bg-[#ffffff] p-5 xl:sticky xl:top-5 xl:h-fit">
             <p className="text-xs font-semibold tracking-[0.14em] text-[#746a5b] uppercase">
-              Understanding map
+              Topics we&apos;ve discussed
             </p>
             <p className="mt-2 text-sm leading-6 text-[#655d52]">
-              Viva marks what it has asked about. It does not score your answers here.
+              This shows which essay points have come up. It is not a score.
             </p>
 
             <ol className="mt-5 divide-y divide-[#e4ddd2] border-y border-[#e4ddd2]">
@@ -1150,7 +1155,7 @@ export function DefenseRoom({
 
                 return (
                   <li
-                    className={`py-4 ${isCurrent ? "bg-[#fff7df] px-3 -mx-3" : ""}`}
+                    className={`py-4 ${isCurrent ? "bg-[#fff8dc] px-3 -mx-3" : ""}`}
                     key={claim.id}
                   >
                     <div className="flex items-start gap-3">
@@ -1158,20 +1163,20 @@ export function DefenseRoom({
                         aria-label={status}
                         className={`mt-1.5 size-2.5 shrink-0 rounded-full ${
                           status === "asked"
-                            ? "bg-[#d2a93e]"
+                            ? "bg-[#e6bb28]"
                             : status === "demonstrated"
                               ? "bg-[#2e7a56]"
                               : status === "partial" || status === "needs_review"
                                 ? "bg-[#bc7d35]"
-                                : "bg-[#c8c0b3]"
+                                : "bg-[#d8d3c8]"
                         }`}
                       />
                       <div>
                         <p className="text-xs font-semibold tracking-[0.12em] text-[#766d60] uppercase">
-                          {claim.kind === "thesis" ? "Central thesis" : claim.id}
-                          {isCurrent ? " · now" : ""}
+                          {claim.kind === "thesis" ? "Main point" : claim.id}
+                          {isCurrent ? " · discussing now" : ""}
                         </p>
-                        <p className="mt-1 font-serif leading-6 text-[#39342c]">{claim.text}</p>
+                        <p className="mt-1 font-serif leading-6 text-[#292824]">{claim.text}</p>
                       </div>
                     </div>
                   </li>
@@ -1179,28 +1184,28 @@ export function DefenseRoom({
               })}
             </ol>
 
-            <div className="mt-5 border-l-2 border-[#1e463e] bg-[#edf5ee] p-4 text-sm leading-6 text-[#365945]">
+            <div className="mt-5 border-l-2 border-[#171717] bg-[#fff8dc] p-4 text-sm leading-6 text-[#554b28]">
               <span className="font-medium">{TRUST_PROMISES.pauseIsFree}</span> Take
               a moment, then resume when you are ready.
             </div>
           </aside>
         </section>
 
-        <section className="border border-[#d8d0c2] bg-[#fcfaf6] shadow-[0_14px_35px_rgba(70,55,30,0.05)]">
-          <div className="flex flex-col gap-4 border-b border-[#e0d9ce] p-5 sm:flex-row sm:items-center sm:justify-between">
+        <section className="rounded-[1.5rem] border border-[#e7e3d8] bg-[#ffffff] shadow-[0_14px_35px_rgba(70,55,30,0.05)]">
+          <div className="flex flex-col gap-4 border-b border-[#eeeae2] p-5 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-xs font-semibold tracking-[0.14em] text-[#746a5b] uppercase">
-                Live transcript
+                Conversation record
               </p>
               <p className="mt-1 text-sm text-[#655d52]">
-                Entries appear only after their transcription is final.
+                Your words appear once Viva has finished transcribing them.
               </p>
             </div>
 
             <div className="flex flex-wrap gap-2">
               {!isConnected ? (
                 <Button
-                  className="bg-[#1e463e] text-white hover:bg-[#173830]"
+                  className="bg-[#171717] text-white hover:bg-[#303030]"
                   disabled={isConnecting || isFinishing}
                   onClick={connect}
                 >
@@ -1209,7 +1214,7 @@ export function DefenseRoom({
                     ? "Connecting…"
                     : isResumingDefense
                       ? "Reconnect microphone"
-                      : "Connect microphone"}
+                      : "Start microphone"}
                 </Button>
               ) : (
                 <Button onClick={togglePause} variant="outline">
@@ -1218,14 +1223,14 @@ export function DefenseRoom({
                 </Button>
               )}
               <Button disabled={isFinishing} onClick={() => finishAndReview()} variant="outline">
-                <Square /> End & review
+                <Square /> Finish and review
               </Button>
             </div>
           </div>
 
           {error ? (
             <div
-              className="mx-5 mt-5 flex items-start gap-3 border-l-2 border-[#c6942a] bg-[#fff5d8] p-3 text-sm leading-6 text-[#644c16]"
+              className="mx-5 mt-5 flex items-start gap-3 border-l-2 border-[#c6942a] bg-[#fff5d8] p-3 text-sm leading-6 text-[#5f5018]"
               role="alert"
             >
               <CircleAlert className="mt-0.5 size-4 shrink-0" />
@@ -1242,8 +1247,8 @@ export function DefenseRoom({
 
           <div className="max-h-[28rem] overflow-y-auto p-5 sm:p-6">
             {session.transcript.turns.length === 0 ? (
-              <div className="border-l-2 border-[#d2a93e] bg-[#fff7df] px-4 py-4 text-sm leading-6 text-[#644c16]">
-                <p className="font-medium">Ready when you are.</p>
+              <div className="border-l-2 border-[#e6bb28] bg-[#fff8dc] px-4 py-4 text-sm leading-6 text-[#5f5018]">
+                <p className="font-medium">Ready when you are</p>
                 <p className="mt-1">
                   Connect the microphone to hear Viva confirm consent and ask the
                   first document-grounded question.
@@ -1255,8 +1260,8 @@ export function DefenseRoom({
                   <li
                     className={`border-l-2 px-4 py-3 ${
                       turn.speaker === "student"
-                        ? "border-[#1e463e] bg-[#edf5ee]"
-                        : "border-[#d2a93e] bg-[#fff7df]"
+                        ? "border-[#171717] bg-[#fff8dc]"
+                        : "border-[#e6bb28] bg-[#fff8dc]"
                     }`}
                     key={turn.id}
                   >
@@ -1264,7 +1269,7 @@ export function DefenseRoom({
                       <span>{turn.speaker === "student" ? "Student" : "Viva"}</span>
                       <span>{displayTime(turn.t)}</span>
                     </div>
-                    <p className="mt-2 leading-7 text-[#39342c]">{turn.text}</p>
+                    <p className="mt-2 leading-7 text-[#292824]">{turn.text}</p>
                   </li>
                 ))}
               </ol>
@@ -1273,8 +1278,8 @@ export function DefenseRoom({
         </section>
 
         {isFinishing ? (
-          <p className="mt-4 flex items-center gap-2 text-sm text-[#365945]" role="status">
-            <Check className="size-4" /> Viva is finishing the conversation and saving the final transcript.
+          <p className="mt-4 flex items-center gap-2 text-sm text-[#554b28]" role="status">
+            <Check className="size-4" /> Saving your conversation record.
           </p>
         ) : null}
       </div>
