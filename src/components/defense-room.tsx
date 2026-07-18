@@ -80,7 +80,10 @@ type RawRealtimeEvent = {
 type DefenseRoomProps = {
   examinerInstructions: string;
   onActivateFocus: () => VivaSessionState | null;
-  onApplyAssessment: (delta: AssessDelta) => VivaSessionState | null;
+  onApplyAssessment: (
+    delta: AssessDelta,
+    answerTurnIds: string[],
+  ) => VivaSessionState | null;
   onAppendRealtimeDiagnostic: (
     diagnostic: RealtimeResponseDiagnostic,
   ) => VivaSessionState | null;
@@ -487,7 +490,7 @@ export function DefenseRoom({
             return;
           }
 
-          const assessed = onApplyAssessment(delta);
+          const assessed = onApplyAssessment(delta, [answerTurn.id]);
 
           if (!assessed) {
             return;

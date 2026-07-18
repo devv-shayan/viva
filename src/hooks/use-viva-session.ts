@@ -8,11 +8,15 @@ import {
   applyAssessDelta,
   appendRealtimeResponseDiagnostic,
   appendTranscriptTurn,
+  createDossierRequest,
   createDefenseSession,
   finishDefense,
   parseVivaSession,
   queueFocus,
+  saveDossier as persistDossier,
+  saveStudentChallenge as persistStudentChallenge,
   saveStudentReviewNote,
+  saveTeacherFindingAction as persistTeacherFindingAction,
   serializeVivaSession,
   type DefenseDraft,
   type Focus,
@@ -21,6 +25,7 @@ import {
   type VivaSessionState,
 } from "@/lib/session-state";
 import type { AssessDelta } from "@/lib/assess-types";
+import type { Dossier, TeacherAction } from "@/lib/dossier-types";
 
 type SessionUpdater = (
   session: VivaSessionState | null,
@@ -105,8 +110,10 @@ export function useVivaSession() {
   );
 
   const applyAssessment = useCallback(
-    (delta: AssessDelta) =>
-      commit((current) => (current ? applyAssessDelta(current, delta) : current)),
+    (delta: AssessDelta, answerTurnIds: string[] = []) =>
+      commit((current) =>
+        current ? applyAssessDelta(current, delta, answerTurnIds) : current,
+      ),
     [commit],
   );
 
@@ -123,6 +130,35 @@ export function useVivaSession() {
     [commit],
   );
 
+  const getDossierRequest = useCallback(() => {
+    const current = sessionRef.current;
+    return current ? createDossierRequest(current) : null;
+  }, []);
+
+  const saveDossier = useCallback(
+    (dossier: Dossier) =>
+      commit((current) => (current ? persistDossier(current, dossier) : current)),
+    [commit],
+  );
+
+  const saveStudentChallenge = useCallback(
+    (claimId: string, note: string) =>
+      commit((current) =>
+        current ? persistStudentChallenge(current, claimId, note) : current,
+      ),
+    [commit],
+  );
+
+  const saveTeacherFindingAction = useCallback(
+    (claimId: string, action: TeacherAction, note?: string) =>
+      commit((current) =>
+        current
+          ? persistTeacherFindingAction(current, claimId, action, note)
+          : current,
+      ),
+    [commit],
+  );
+
   const clearSession = useCallback(() => commit(() => null), [commit]);
 
   return {
@@ -133,6 +169,10 @@ export function useVivaSession() {
     clearSession,
     completeDefense,
     hydrated,
+    getDossierRequest,
+    saveDossier,
+    saveStudentChallenge,
+    saveTeacherFindingAction,
     session,
     saveReviewNote,
     setPendingFocus,

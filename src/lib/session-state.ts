@@ -13,6 +13,16 @@ import {
   type Submission,
 } from "./analysis-types";
 import type { AssessDelta } from "./assess-types";
+import {
+  DossierAssessmentRecordSchema,
+  DossierRequestSchema,
+  DossierSchema,
+  getDossierValidationIssues,
+  type Dossier,
+  type DossierAssessmentRecord,
+  type StudentChallenge,
+  type TeacherAction,
+} from "./dossier-types";
 
 export const VIVA_SESSION_STORAGE_KEY = "viva:session:v1";
 const STORAGE_VERSION = 1;
@@ -113,6 +123,10 @@ export const VivaSessionSchema = z
     graph: ArgumentGraphSchema,
     coverage: z.array(CoverageEntrySchema).min(1),
     transcript: TranscriptSchema,
+    // Keep the local assessment evidence that produced the coverage map. This
+    // lets the dossier report the actual content signal rather than infer it
+    // again from speech or delivery.
+    assessmentLedger: z.array(DossierAssessmentRecordSchema).max(20).default([]),
     pendingFocus: FocusSchema.optional(),
     activeFocus: FocusSchema.optional(),
     studentReview: z
@@ -121,6 +135,7 @@ export const VivaSessionSchema = z
       })
       .strict()
       .optional(),
+    dossier: DossierSchema.optional(),
   })
   .strict()
   .superRefine((session, context) => {
@@ -139,6 +154,18 @@ export const VivaSessionSchema = z
         code: "custom",
         message: "Transcript studentName must match the submission.",
         path: ["transcript", "studentName"],
+      });
+    }
+
+    const turnById = new Map(
+      session.transcript.turns.map((turn) => [turn.id, turn]),
+    );
+
+    if (turnById.size !== session.transcript.turns.length) {
+      context.addIssue({
+        code: "custom",
+        message: "Transcript turns must have stable, unique IDs.",
+        path: ["transcript", "turns"],
       });
     }
 
@@ -205,6 +232,82 @@ export const VivaSessionSchema = z
           message: `${name} must use a verbatim submission passage.`,
           path: [name, "passage"],
         });
+      }
+    }
+
+    for (const record of session.assessmentLedger) {
+      const coverage = session.coverage.find(
+        (entry) => entry.claimId === record.claimId,
+      );
+
+      if (!coverage) {
+        context.addIssue({
+          code: "custom",
+          message: `Assessment record references an unknown claim ${record.claimId}.`,
+          path: ["assessmentLedger"],
+        });
+        continue;
+      }
+
+      if (new Set(record.answerTurnIds).size !== record.answerTurnIds.length) {
+        context.addIssue({
+          code: "custom",
+          message: `Assessment record for ${record.claimId} repeats an answer turn ID.`,
+          path: ["assessmentLedger"],
+        });
+      }
+
+      for (const answerTurnId of record.answerTurnIds) {
+        if (
+          !coverage.answerTurnIds.includes(answerTurnId) ||
+          turnById.get(answerTurnId)?.speaker !== "student"
+        ) {
+          context.addIssue({
+            code: "custom",
+            message: `Assessment record for ${record.claimId} must cite one of its student answer turns.`,
+            path: ["assessmentLedger"],
+          });
+          break;
+        }
+      }
+    }
+
+    if (session.phase === "dossier" && !session.dossier) {
+      context.addIssue({
+        code: "custom",
+        message: "A dossier-phase session must contain a validated dossier.",
+        path: ["dossier"],
+      });
+    }
+
+    if (session.dossier) {
+      const dossierRequest = DossierRequestSchema.safeParse({
+        submission: session.submission,
+        rubric: session.rubric,
+        graph: session.graph,
+        coverage: session.coverage,
+        transcript: {
+          sessionId: session.transcript.sessionId,
+          studentName: session.transcript.studentName,
+          consent: session.transcript.consent,
+          turns: session.transcript.turns,
+        },
+        assessmentLedger: session.assessmentLedger,
+      });
+
+      if (!dossierRequest.success) {
+        context.addIssue({
+          code: "custom",
+          message: "The dossier must be paired with a valid consented evidence record.",
+          path: ["dossier"],
+        });
+      } else {
+        for (const issue of getDossierValidationIssues(
+          session.dossier,
+          dossierRequest.data,
+        )) {
+          context.addIssue({ code: "custom", message: issue, path: ["dossier"] });
+        }
       }
     }
   });
@@ -326,6 +429,7 @@ export function createDefenseSession(
     rubric: draft.rubric,
     graph: draft.graph,
     coverage: createCoverage(draft.graph),
+    assessmentLedger: [],
     transcript: {
       sessionId: options.sessionId ?? createId("viva"),
       studentName: draft.submission.studentName,
@@ -495,17 +599,82 @@ export function applyAssessDeltaToCoverage(
   );
 }
 
+function createAssessmentRecord(
+  session: VivaSessionState,
+  delta: AssessDelta,
+  answerTurnIds: string[],
+): DossierAssessmentRecord | undefined {
+  const uniqueAnswerTurnIds = [...new Set(answerTurnIds)];
+
+  if (uniqueAnswerTurnIds.length === 0) {
+    return undefined;
+  }
+
+  const coverage = session.coverage.find(
+    (entry) => entry.claimId === delta.claimId,
+  );
+  const turnsById = new Map(
+    session.transcript.turns.map((turn) => [turn.id, turn]),
+  );
+
+  if (
+    !coverage ||
+    uniqueAnswerTurnIds.some(
+      (answerTurnId) =>
+        !coverage.answerTurnIds.includes(answerTurnId) ||
+        turnsById.get(answerTurnId)?.speaker !== "student",
+    )
+  ) {
+    return undefined;
+  }
+
+  return DossierAssessmentRecordSchema.parse({
+    ...delta,
+    answerTurnIds: uniqueAnswerTurnIds,
+  });
+}
+
+function addAssessmentRecord(
+  ledger: DossierAssessmentRecord[],
+  record: DossierAssessmentRecord,
+) {
+  const recordKey = `${record.claimId}:${record.answerTurnIds.join("|")}`;
+
+  return [
+    ...ledger.filter(
+      (item) => `${item.claimId}:${item.answerTurnIds.join("|")}` !== recordKey,
+    ),
+    record,
+  ].slice(-20);
+}
+
 export function applyAssessDelta(
   session: VivaSessionState,
   delta: AssessDelta,
+  answerTurnIds: string[] = [],
 ): VivaSessionState {
   if (session.activeFocus?.claimId !== delta.claimId) {
+    return session;
+  }
+
+  const assessmentRecord = createAssessmentRecord(
+    session,
+    delta,
+    answerTurnIds,
+  );
+
+  // A caller that supplies answer IDs must supply stable student turns for the
+  // active focus. Never update coverage with an untraceable assessment.
+  if (answerTurnIds.length > 0 && !assessmentRecord) {
     return session;
   }
 
   return {
     ...session,
     coverage: applyAssessDeltaToCoverage(session.coverage, delta),
+    assessmentLedger: assessmentRecord
+      ? addAssessmentRecord(session.assessmentLedger, assessmentRecord)
+      : session.assessmentLedger,
   };
 }
 
@@ -541,6 +710,115 @@ export function saveStudentReviewNote(
     ...session,
     studentReview: trimmedNote ? { note: trimmedNote } : undefined,
   };
+}
+
+/**
+ * Produces the minimal, consented evidence record accepted by POST
+ * /api/dossier. Realtime diagnostics stay local and are deliberately not sent
+ * to dossier generation because they describe model transport, not learning.
+ */
+export function createDossierRequest(session: VivaSessionState) {
+  return DossierRequestSchema.parse({
+    submission: session.submission,
+    rubric: session.rubric,
+    graph: session.graph,
+    coverage: session.coverage,
+    transcript: {
+      sessionId: session.transcript.sessionId,
+      studentName: session.transcript.studentName,
+      consent: session.transcript.consent,
+      turns: session.transcript.turns,
+    },
+    assessmentLedger: session.assessmentLedger,
+  });
+}
+
+/**
+ * Persist only a citation-safe dossier. The endpoint applies the same checks;
+ * repeating them here prevents a malformed client payload from becoming a
+ * durable teacher handoff after a refresh.
+ */
+export function saveDossier(
+  session: VivaSessionState,
+  dossier: Dossier,
+): VivaSessionState {
+  if (session.phase === "defense") {
+    throw new Error("Finish the defense before saving a teacher dossier.");
+  }
+
+  const parsedDossier = DossierSchema.parse(dossier);
+  const issues = getDossierValidationIssues(
+    parsedDossier,
+    createDossierRequest(session),
+  );
+
+  if (issues.length > 0) {
+    throw new Error(`Refusing to save an invalid dossier: ${issues.join(" ")}`);
+  }
+
+  return {
+    ...session,
+    phase: "dossier",
+    activeFocus: undefined,
+    pendingFocus: undefined,
+    dossier: parsedDossier,
+  };
+}
+
+function updateDossierFinding(
+  session: VivaSessionState,
+  claimId: string,
+  update: (finding: Dossier["findings"][number]) => Dossier["findings"][number],
+): VivaSessionState {
+  if (!session.dossier || !session.dossier.findings.some((finding) => finding.claimId === claimId)) {
+    return session;
+  }
+
+  return {
+    ...session,
+    dossier: DossierSchema.parse({
+      ...session.dossier,
+      findings: session.dossier.findings.map((finding) =>
+        finding.claimId === claimId ? update(finding) : finding,
+      ),
+    }),
+  };
+}
+
+/** Stores a student's per-finding clarification without rewriting the dossier. */
+export function saveStudentChallenge(
+  session: VivaSessionState,
+  claimId: string,
+  note: string,
+): VivaSessionState {
+  const trimmedNote = note.trim();
+
+  if (!trimmedNote) {
+    return session;
+  }
+
+  const challenge: StudentChallenge = { flagged: true, note: trimmedNote };
+
+  return updateDossierFinding(session, claimId, (finding) => ({
+    ...finding,
+    studentChallenge: challenge,
+  }));
+}
+
+/** Typed local handoff for the teacher screen; no teacher data is sent away. */
+export function saveTeacherFindingAction(
+  session: VivaSessionState,
+  claimId: string,
+  teacherAction: TeacherAction,
+  teacherNote?: string,
+): VivaSessionState {
+  const trimmedNote = teacherNote?.trim();
+
+  return updateDossierFinding(session, claimId, (finding) => ({
+    ...finding,
+    teacherAction,
+    teacherNote: trimmedNote || undefined,
+  }));
 }
 
 export function getElapsedMilliseconds(session: VivaSessionState, now = Date.now()) {

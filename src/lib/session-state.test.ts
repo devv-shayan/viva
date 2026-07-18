@@ -10,16 +10,21 @@ import {
   applyAssessDelta,
   appendRealtimeResponseDiagnostic,
   appendTranscriptTurn,
+  createDossierRequest,
   createDefenseSession,
   createFocusForClaim,
   createPreviewNextFocus,
   finishDefense,
   parseVivaSession,
   queueFocus,
+  saveDossier,
+  saveStudentChallenge,
   saveStudentReviewNote,
+  saveTeacherFindingAction,
   serializeVivaSession,
   shouldResumeDefense,
 } from "./session-state";
+import type { Dossier } from "./dossier-types";
 
 const rubric: RubricObjective[] = [
   { id: "r1", text: "Explains evidence and trade-offs" },
@@ -215,6 +220,47 @@ describe("Viva defense session state", () => {
     expect(mismatched).toEqual(assessed);
   });
 
+  it("persists assessment evidence with the stable student turn that produced it", () => {
+    let session = activatePendingFocus(createSession());
+
+    session = appendTranscriptTurn(session, {
+      id: "agent-1",
+      speaker: "agent",
+      text: "Why is congestion pricing the right tool?",
+      t: 1,
+    });
+    session = appendTranscriptTurn(session, {
+      id: "student-1",
+      speaker: "student",
+      text: "Road space is limited.",
+      t: 2,
+    });
+
+    session = applyAssessDelta(
+      session,
+      {
+        claimId: "thesis",
+        quality: "partial",
+        evidenceCited: false,
+        note: "Explained the road-space reasoning but did not cite an example.",
+      },
+      ["student-1"],
+    );
+
+    expect(session.assessmentLedger).toEqual([
+      {
+        claimId: "thesis",
+        answerTurnIds: ["student-1"],
+        quality: "partial",
+        evidenceCited: false,
+        note: "Explained the road-space reasoning but did not cite an example.",
+      },
+    ]);
+    expect(createDossierRequest(session).assessmentLedger).toEqual(
+      session.assessmentLedger,
+    );
+  });
+
   it("keeps capped or failed Realtime replies in the local consent record", () => {
     let session = createSession();
 
@@ -275,5 +321,153 @@ describe("Viva defense session state", () => {
     expect(completed.studentReview).toEqual({
       note: "Name was transcribed incorrectly.",
     });
+  });
+
+  it("persists a citation-safe dossier and per-finding student and teacher handoff", () => {
+    let session = activatePendingFocus(createSession());
+
+    session = appendTranscriptTurn(session, {
+      id: "agent-thesis",
+      speaker: "agent",
+      text: "Explain the central claim.",
+      t: 1,
+    });
+    session = appendTranscriptTurn(session, {
+      id: "student-thesis",
+      speaker: "student",
+      text: "Road space is limited.",
+      t: 2,
+    });
+    session = activatePendingFocus(
+      queueFocus(session, createPreviewNextFocus(session)),
+    );
+    session = appendTranscriptTurn(session, {
+      id: "agent-c1",
+      speaker: "agent",
+      text: "What happened in London?",
+      t: 3,
+    });
+    session = appendTranscriptTurn(session, {
+      id: "student-c1",
+      speaker: "student",
+      text: "Traffic fell by fifteen percent after pricing.",
+      t: 4,
+    });
+    session = applyAssessDelta(
+      session,
+      {
+        claimId: "c1",
+        quality: "demonstrated",
+        evidenceCited: true,
+        note: "Named the London traffic evidence.",
+      },
+      ["student-c1"],
+    );
+
+    const dossier: Dossier = {
+      summary: "The record includes a follow-up on the London evidence.",
+      findings: [
+        {
+          rubricId: "r1",
+          claimId: "c1",
+          questionTurnId: "agent-c1",
+          answerTurnIds: ["student-c1"],
+          passage: { paragraphId: "p2", quote: "London traffic fell" },
+          status: "demonstrated",
+          observation: "The student named the London traffic evidence.",
+        },
+      ],
+      notTested: ["c2", "c3"],
+      framingNote:
+        "Viva reports what the student could and couldn't explain about their submitted work, with links to the exact passages and answers. It does not detect AI use, determine authorship, or make judgments — those decisions belong to the instructor.",
+    };
+
+    const saved = saveDossier(finishDefense(session), dossier);
+    const challenged = saveStudentChallenge(
+      saved,
+      "c1",
+      "I meant the figure as an example, not the only evidence.",
+    );
+    const reviewed = saveTeacherFindingAction(
+      challenged,
+      "c1",
+      "annotated",
+      "Discuss the wider evidence base in class.",
+    );
+    const restored = parseVivaSession(serializeVivaSession(reviewed));
+
+    expect(restored?.phase).toBe("dossier");
+    expect(restored?.dossier?.findings[0]).toMatchObject({
+      studentChallenge: {
+        flagged: true,
+        note: "I meant the figure as an example, not the only evidence.",
+      },
+      teacherAction: "annotated",
+      teacherNote: "Discuss the wider evidence base in class.",
+    });
+  });
+
+  it("refuses a persisted dossier whose citation no longer matches the evidence record", () => {
+    let session = activatePendingFocus(createSession());
+    session = appendTranscriptTurn(session, {
+      id: "agent-1",
+      speaker: "agent",
+      text: "Explain the central claim.",
+      t: 1,
+    });
+    session = appendTranscriptTurn(session, {
+      id: "student-1",
+      speaker: "student",
+      text: "Road space is scarce.",
+      t: 2,
+    });
+    session = activatePendingFocus(
+      queueFocus(session, createPreviewNextFocus(session)),
+    );
+    session = appendTranscriptTurn(session, {
+      id: "agent-c1",
+      speaker: "agent",
+      text: "What happened in London?",
+      t: 3,
+    });
+    session = appendTranscriptTurn(session, {
+      id: "student-c1",
+      speaker: "student",
+      text: "Traffic fell.",
+      t: 4,
+    });
+    session = applyAssessDelta(
+      session,
+      {
+        claimId: "c1",
+        quality: "demonstrated",
+        evidenceCited: true,
+        note: "Named the London evidence.",
+      },
+      ["student-c1"],
+    );
+
+    const saved = saveDossier(finishDefense(session), {
+      summary: "The record includes a follow-up on the London evidence.",
+      findings: [
+        {
+          rubricId: "r1",
+          claimId: "c1",
+          questionTurnId: "agent-c1",
+          answerTurnIds: ["student-c1"],
+          passage: { paragraphId: "p2", quote: "London traffic fell" },
+          status: "demonstrated",
+          observation: "The student named the London evidence.",
+        },
+      ],
+      notTested: ["c2", "c3"],
+      framingNote:
+        "Viva reports what the student could and couldn't explain about their submitted work, with links to the exact passages and answers. It does not detect AI use, determine authorship, or make judgments — those decisions belong to the instructor.",
+    });
+    const malformed = structuredClone(saved);
+
+    malformed.dossier!.findings[0].questionTurnId = "not-a-recorded-turn";
+
+    expect(parseVivaSession(serializeVivaSession(malformed))).toBeNull();
   });
 });
