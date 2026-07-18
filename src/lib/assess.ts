@@ -5,6 +5,7 @@ import { requireOpenAIKey } from "./env";
 import { vivaModels } from "./models";
 import {
   AssessDeltaSchema,
+  AssessModelOutputSchema,
   type AssessDelta,
   type AssessRequest,
 } from "./assess-types";
@@ -24,7 +25,7 @@ Quality definitions:
 - contradicts_submission: the answer conflicts with the submitted argument or passage.
 - no_answer: the student did not provide assessable content for this focus.
 
-The claimId must equal FOCUS.claimId. evidenceCited means the student actually named or explained evidence/reasoning from the submission; it does not reward delivery style. The note must be one concise, neutral, content-only observation. Set answeredInOtherLanguage only to a language code when the answer materially used another language.`;
+The claimId must equal FOCUS.claimId. evidenceCited means the student actually named or explained evidence/reasoning from the submission; it does not reward delivery style. The note must be one concise, neutral, content-only observation. Set answeredInOtherLanguage to a language code when the answer materially used another language; otherwise return null.`;
 
 const FORBIDDEN_ASSESS_NOTE =
   /\b(?:ai(?:-generated)?|cheat(?:ing)?|plagiar(?:ism|ized)|authorship|grade|score|verdict|probability|accent|fluency|hesitat(?:e|ion)|fillers?(?:\s+words?)?|confiden(?:ce|t)|paus(?:e|ed|ing)|speaking\s+rate|grammar|english\s+proficiency|language\s+choice)\b/i;
@@ -90,7 +91,7 @@ async function requestAssessDelta(request: AssessRequest): Promise<AssessDelta> 
     instructions: ASSESS_INSTRUCTIONS,
     input: buildAssessInput(request),
     text: {
-      format: zodTextFormat(AssessDeltaSchema, "assess_delta"),
+      format: zodTextFormat(AssessModelOutputSchema, "assess_delta"),
     },
   });
 
@@ -106,7 +107,11 @@ async function requestAssessDelta(request: AssessRequest): Promise<AssessDelta> 
     );
   }
 
-  return response.output_parsed;
+  return AssessDeltaSchema.parse({
+    ...response.output_parsed,
+    answeredInOtherLanguage:
+      response.output_parsed.answeredInOtherLanguage ?? undefined,
+  });
 }
 
 export async function generateValidatedAssessDelta(

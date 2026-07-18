@@ -157,6 +157,12 @@ export function DemoReplay({ sampleEssay }: { sampleEssay: string }) {
 
         const focus = current.activeFocus;
         if (!focus) {
+          // The final student acknowledgement follows the orchestrator wrap.
+          // It belongs in the transcript but is not an assessable answer.
+          if (!current.pendingFocus) {
+            continue;
+          }
+
           throw new Error("The sample replay lost its active discussion focus.");
         }
 

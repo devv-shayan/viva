@@ -45,6 +45,14 @@ export const AssessDeltaSchema = z
   })
   .strict();
 
+/**
+ * OpenAI structured outputs require all object properties to be required.
+ * Keep this API-only shape nullable, then normalize null back to the optional
+ * application field after parsing the model response.
+ */
+export const AssessModelOutputSchema = AssessDeltaSchema.extend({
+  answeredInOtherLanguage: z.string().trim().min(2).max(16).nullable(),
+});
 export const AssessRequestSchema = z
   .object({
     answerTurns: z.array(AssessTurnSchema).min(1).max(3),
