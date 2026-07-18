@@ -152,7 +152,7 @@ describe("Viva argument-graph validation", () => {
     const invalidGraph = cloneRecordedGraph();
     invalidGraph.claims[2].passage.quote = "minimal enforcement costs";
 
-    const generate = vi.fn(async () => {
+    const generate = vi.fn(async (_validationFeedback?: string) => {
       return generate.mock.calls.length === 1 ? invalidGraph : cloneRecordedGraph();
     });
 
