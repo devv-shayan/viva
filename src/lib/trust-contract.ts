@@ -13,3 +13,10 @@ export const TRUST_PROMISES = {
 
 export const ASSESS_HICCUP_MESSAGE =
   "(one answer couldn't be processed — the recording is safe and the defense continues)";
+
+/**
+ * This is server-owned copy. The dossier generator never writes it, so the
+ * evidence handoff cannot drift into an authorship or grading claim.
+ */
+export const DOSSIER_FRAMING_NOTE =
+  "Viva reports what the student could and couldn't explain about their submitted work, with links to the exact passages and answers. It does not detect AI use, determine authorship, or make judgments — those decisions belong to the instructor.";

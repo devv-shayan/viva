@@ -1,0 +1,370 @@
+import { describe, expect, it } from "vitest";
+
+import demoDefense from "../../fixtures/demo-defense.json";
+
+import {
+  DOSSIER_FRAMING_NOTE,
+  DossierModelOutputSchema,
+  DossierRequestSchema,
+  finalizeDossier,
+  getDossierValidationIssues,
+  type DossierModelOutput,
+  type DossierRequest,
+} from "./dossier-types";
+import {
+  DOSSIER_INSTRUCTIONS,
+  DossierValidationError,
+  generateValidatedDossier,
+} from "./dossier";
+
+// The checked-in fixture includes a human note; the API receives only the
+// consented transcript contract, not fixture metadata.
+const fixtureTranscript = {
+  sessionId: demoDefense.sessionId,
+  studentName: demoDefense.studentName,
+  consent: demoDefense.consent,
+  turns: demoDefense.turns,
+};
+
+const request: DossierRequest = DossierRequestSchema.parse({
+  submission: {
+    id: "submission-demo",
+    studentName: "Areeba Khan",
+    title: "Should Karachi Adopt Congestion Pricing?",
+    text: [
+      "Karachi should adopt congestion pricing because road space is scarce.",
+      "London traffic fell by 15 percent after pricing.",
+      "Reinvested revenue can protect low-income commuters.",
+      "Safe City cameras make enforcement cheap.",
+      "Ring-fenced revenue can improve buses.",
+    ].join("\n\n"),
+    paragraphs: [
+      { id: "p1", text: "Karachi should adopt congestion pricing because road space is scarce." },
+      { id: "p2", text: "London traffic fell by 15 percent after pricing." },
+      { id: "p3", text: "Reinvested revenue can protect low-income commuters." },
+      { id: "p4", text: "Safe City cameras make enforcement cheap." },
+      { id: "p5", text: "Ring-fenced revenue can improve buses." },
+    ],
+  },
+  rubric: [
+    { id: "r1", text: "Supports claims with cited evidence" },
+    { id: "r2", text: "Engages counterarguments honestly" },
+    { id: "r3", text: "Reasons about policy trade-offs" },
+  ],
+  graph: {
+    thesis: {
+      id: "thesis",
+      text: "Karachi should adopt congestion pricing.",
+      passage: { paragraphId: "p1", quote: "Karachi should adopt congestion pricing" },
+      evidence: [],
+      kind: "thesis",
+      rubricIds: ["r1"],
+    },
+    claims: [
+      {
+        id: "c1",
+        text: "London traffic results support pricing.",
+        passage: { paragraphId: "p2", quote: "London traffic fell by 15 percent" },
+        evidence: [
+          {
+            text: "A 15 percent reduction.",
+            passage: { paragraphId: "p2", quote: "15 percent" },
+          },
+        ],
+        kind: "claim",
+        rubricIds: ["r1"],
+      },
+      {
+        id: "c2",
+        text: "Equity depends on revenue reinvestment.",
+        passage: { paragraphId: "p3", quote: "Reinvested revenue can protect low-income commuters" },
+        evidence: [
+          {
+            text: "Revenue protects commuters.",
+            passage: { paragraphId: "p3", quote: "protect low-income commuters" },
+          },
+        ],
+        kind: "claim",
+        rubricIds: ["r2"],
+      },
+      {
+        id: "c3",
+        text: "Safe City cameras make enforcement cheap.",
+        passage: { paragraphId: "p4", quote: "Safe City cameras make enforcement cheap" },
+        evidence: [],
+        kind: "assumption",
+        rubricIds: ["r3"],
+      },
+      {
+        id: "c4",
+        text: "Ring-fenced revenue can improve buses.",
+        passage: { paragraphId: "p5", quote: "Ring-fenced revenue can improve buses" },
+        evidence: [
+          {
+            text: "Revenue can improve buses.",
+            passage: { paragraphId: "p5", quote: "improve buses" },
+          },
+        ],
+        kind: "claim",
+        rubricIds: ["r1", "r3"],
+      },
+    ],
+    weakSpots: ["c3"],
+  },
+  coverage: [
+    {
+      claimId: "thesis",
+      status: "demonstrated",
+      questionTurnIds: ["t1"],
+      answerTurnIds: ["t2"],
+      movesUsed: ["grounded_question"],
+    },
+    {
+      claimId: "c1",
+      status: "demonstrated",
+      questionTurnIds: ["t3", "t5"],
+      answerTurnIds: ["t4", "t6"],
+      movesUsed: ["grounded_question", "drill_down"],
+    },
+    {
+      claimId: "c2",
+      status: "demonstrated",
+      questionTurnIds: ["t7", "t9"],
+      answerTurnIds: ["t8", "t10"],
+      movesUsed: ["grounded_question", "counterfactual"],
+    },
+    {
+      claimId: "c3",
+      status: "partial",
+      questionTurnIds: ["t11"],
+      answerTurnIds: ["t12"],
+      movesUsed: ["grounded_question"],
+    },
+    {
+      claimId: "c4",
+      status: "untested",
+      questionTurnIds: [],
+      answerTurnIds: [],
+      movesUsed: [],
+    },
+  ],
+  transcript: fixtureTranscript,
+  assessmentLedger: [
+    {
+      claimId: "c1",
+      answerTurnIds: ["t6"],
+      quality: "demonstrated",
+      evidenceCited: true,
+      note: "Named the London figure and connected it to peak-time congestion.",
+      answeredInOtherLanguage: "ur",
+    },
+    {
+      claimId: "c2",
+      answerTurnIds: ["t10"],
+      quality: "demonstrated",
+      evidenceCited: true,
+      note: "Explained that the equity case depends on revenue reinvestment.",
+    },
+    {
+      claimId: "c3",
+      answerTurnIds: ["t12"],
+      quality: "partial",
+      evidenceCited: false,
+      note: "Identified the unestimated enforcement-cost assumption.",
+    },
+  ],
+});
+
+const validDraft: DossierModelOutput = DossierModelOutputSchema.parse({
+  summary:
+    "The transcript records grounded follow-ups on the London evidence, the equity condition, and the enforcement-cost assumption. One answer included Urdu alongside English, recorded neutrally in the assessment ledger.",
+  findings: [
+    {
+      rubricId: "r1",
+      claimId: "c1",
+      questionTurnId: "t5",
+      answerTurnIds: ["t6"],
+      passage: { paragraphId: "p2", quote: "London traffic fell by 15 percent" },
+      status: "demonstrated",
+      observation: "After a follow-up, the student named the 15 percent London traffic reduction and connected it to peak-time congestion.",
+    },
+    {
+      rubricId: "r2",
+      claimId: "c2",
+      questionTurnId: "t9",
+      answerTurnIds: ["t10"],
+      passage: { paragraphId: "p3", quote: "Reinvested revenue can protect low-income commuters" },
+      status: "demonstrated",
+      observation: "The student explained that the equity argument depends on reinvesting revenue in buses.",
+    },
+    {
+      rubricId: "r3",
+      claimId: "c3",
+      questionTurnId: "t11",
+      answerTurnIds: ["t12"],
+      passage: { paragraphId: "p4", quote: "Safe City cameras make enforcement cheap" },
+      status: "needs_review",
+      observation: "The student identified that integration and billing costs were not estimated, while explaining the assumption behind camera reuse.",
+    },
+  ],
+});
+
+describe("Viva dossier validation", () => {
+  it("creates the fixture dossier with evidence links, the fixed framing, and honest notTested coverage", async () => {
+    const dossier = await generateValidatedDossier({
+      request,
+      generate: async () => validDraft,
+    });
+
+    expect(dossier.findings.map((finding) => [finding.claimId, finding.status])).toEqual([
+      ["c1", "demonstrated"],
+      ["c2", "demonstrated"],
+      ["c3", "needs_review"],
+    ]);
+    expect(dossier.notTested).toEqual(["c4"]);
+    expect(dossier.framingNote).toBe(DOSSIER_FRAMING_NOTE);
+  });
+
+  it("keeps an early-ended defense honest when no reportable claim was reached", async () => {
+    const earlyRequest = structuredClone(request);
+    earlyRequest.coverage = earlyRequest.coverage.map((entry) => ({
+      ...entry,
+      status: "untested",
+      questionTurnIds: [],
+      answerTurnIds: [],
+      movesUsed: [],
+    }));
+    earlyRequest.assessmentLedger = [];
+
+    const dossier = await generateValidatedDossier({
+      request: DossierRequestSchema.parse(earlyRequest),
+      generate: async () => ({
+        summary: "The recorded conversation did not reach a reportable claim after consent.",
+        findings: [],
+      }),
+    });
+
+    expect(dossier.findings).toEqual([]);
+    expect(dossier.notTested).toEqual(["c1", "c2", "c3", "c4"]);
+  });
+
+  it("rejects an unsafe draft and regenerates from server-authored validation feedback", async () => {
+    const unsafeDraft = structuredClone(validDraft);
+    unsafeDraft.summary = "This looks AI-generated.";
+    const feedback: Array<string | undefined> = [];
+
+    const dossier = await generateValidatedDossier({
+      request,
+      generate: async (validationFeedback) => {
+        feedback.push(validationFeedback);
+        return feedback.length === 1 ? unsafeDraft : validDraft;
+      },
+    });
+
+    expect(dossier.findings).toHaveLength(3);
+    expect(feedback).toHaveLength(2);
+    expect(feedback[0]).toBeUndefined();
+    expect(feedback[1]).toContain("forbidden verdict vocabulary");
+    expect(feedback[1]).not.toContain("AI-generated");
+  });
+
+  it("fails loudly after the bounded third invalid draft", async () => {
+    const unsafeDraft = structuredClone(validDraft);
+    unsafeDraft.summary = "This is a grade of 90%.";
+    let calls = 0;
+
+    await expect(
+      generateValidatedDossier({
+        request,
+        generate: async () => {
+          calls += 1;
+          return unsafeDraft;
+        },
+      }),
+    ).rejects.toBeInstanceOf(DossierValidationError);
+
+    expect(calls).toBe(3);
+  });
+
+  it("rejects verdict language only in model-authored prose, not the student record", () => {
+    for (const word of ["cheating", "AI-generated", "plagiarism", "authorship", "80%", "grade", "score", "verdict", "probability"]) {
+      const candidate = finalizeDossier(
+        { ...validDraft, summary: `The ${word} result is unsafe.` },
+        request,
+      );
+
+      expect(getDossierValidationIssues(candidate, request)).toContain(
+        "Dossier summary contains forbidden verdict vocabulary.",
+      );
+    }
+  });
+
+  it("rejects citation links that are unknown, out of order, wrong for a claim, or not approved passage text", () => {
+    const candidate = finalizeDossier(structuredClone(validDraft), request);
+    candidate.findings[0].questionTurnId = "missing-turn";
+    candidate.findings[0].answerTurnIds = ["t4"];
+    candidate.findings[1].passage = { paragraphId: "p3", quote: "protect low-income commuters" };
+    candidate.findings[2].status = "partially_demonstrated";
+
+    const issues = getDossierValidationIssues(candidate, request);
+
+    expect(issues.join("\n")).toContain("agent question turns");
+    expect(issues.join("\n")).toContain("answers after its question");
+    expect(issues.join("\n")).toContain("approved claim passage exactly");
+    expect(issues.join("\n")).toContain("status must be needs_review");
+  });
+
+  it("rejects duplicate, wrong-speaker, wrong-rubric, and dishonest coverage links", () => {
+    const wrongSpeaker = finalizeDossier(structuredClone(validDraft), request);
+    wrongSpeaker.findings[0].answerTurnIds = ["t5"];
+
+    const wrongRubric = finalizeDossier(structuredClone(validDraft), request);
+    wrongRubric.findings[0].rubricId = "r3";
+
+    const duplicateFinding = finalizeDossier(structuredClone(validDraft), request);
+    duplicateFinding.findings[2].claimId = "c1";
+
+    const dishonestNotTested = finalizeDossier(structuredClone(validDraft), request);
+    dishonestNotTested.notTested = ["c3"];
+
+    expect(getDossierValidationIssues(wrongSpeaker, request).join("\n")).toContain(
+      "student answer turns",
+    );
+    expect(getDossierValidationIssues(wrongRubric, request).join("\n")).toContain(
+      "approved rubric IDs",
+    );
+    expect(getDossierValidationIssues(duplicateFinding, request).join("\n")).toContain(
+      "one finding per reportable claim",
+    );
+    expect(getDossierValidationIssues(dishonestNotTested, request).join("\n")).toContain(
+      "notTested must list exactly",
+    );
+  });
+
+  it("rejects malformed consented evidence records before they can reach the model", () => {
+    const duplicateTurn = structuredClone(request);
+    duplicateTurn.transcript.turns[1].id = duplicateTurn.transcript.turns[0].id;
+
+    const agentAnswer = structuredClone(request);
+    agentAnswer.coverage[0].answerTurnIds = ["t1"];
+
+    expect(DossierRequestSchema.safeParse(duplicateTurn).success).toBe(false);
+    expect(DossierRequestSchema.safeParse(agentAnswer).success).toBe(false);
+  });
+
+  it("makes the content-only and no-verdict contract explicit for dossier generation", () => {
+    for (const forbiddenFactor of [
+      "accent",
+      "fluency",
+      "hesitation",
+      "filler words",
+      "confidence",
+    ]) {
+      expect(DOSSIER_INSTRUCTIONS).toContain(forbiddenFactor);
+    }
+
+    expect(DOSSIER_INSTRUCTIONS).toContain("authorship");
+    expect(DOSSIER_INSTRUCTIONS).toContain("grades");
+    expect(DOSSIER_INSTRUCTIONS).toContain("verdict");
+  });
+});
