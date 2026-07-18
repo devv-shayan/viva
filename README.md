@@ -1,36 +1,98 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Viva
 
-## Getting Started
+**Evidence of understanding, not accusations.**
 
-First, run the development server:
+Viva turns a student’s submitted essay into a short, document-grounded oral defense and gives the teacher an evidence dossier of what the student explained. It is an **OpenAI Build Week 2026** project for the **Education** track.
+
+> Hackathon project. Viva is not affiliated with or endorsed by OpenAI.
+
+## Why Viva
+
+AI-authorship detectors make probabilistic claims about who wrote a piece of work. Viva takes a different approach: it gives students a fair chance to explain their own reasoning, tied to the exact passages in their submission.
+
+Viva does **not** detect AI use, determine authorship, assign grades, or make accusations. Teachers remain responsible for every decision.
+
+## What it does
+
+1. A teacher pastes an essay and chooses discussion objectives.
+2. Viva creates a document-grounded argument map with passages and weak spots.
+3. The student gives informed consent before the recorded defense begins.
+4. Viva asks focused follow-up and counterfactual questions while showing the relevant passage.
+5. The student reviews the transcript and can add a clarification.
+6. The teacher receives a citation-safe dossier linking each finding to the rubric objective, essay passage, question, and answer.
+
+## Try the demo
+
+The fastest judge path needs no microphone:
+
+1. Start the app and open `http://localhost:3000`.
+2. Select **Watch a sample defense**.
+3. Viva analyzes the sample essay, replays a scripted defense, assesses each answer through the live pipeline, and prepares the teacher report.
+
+The transcript is scripted for a reliable demo. The essay analysis, answer assessment, coverage map, and dossier are generated through the live application APIs.
+
+## Run locally
+
+### Prerequisites
+
+- Node.js 20+
+- An OpenAI API key with access to the configured models
+
+### Setup
+
+```bash
+npm install
+```
+
+Create `.env.local` with your key:
+
+```env
+OPENAI_API_KEY=your_key_here
+```
+
+Then run:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Useful checks:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm run lint
+npm test
+npm run build
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Technology
 
-## Learn More
+- Next.js 15, React 19, TypeScript, Tailwind CSS
+- OpenAI Responses API for essay analysis, answer assessment, and dossier generation
+- OpenAI Realtime Agents SDK for the live voice defense
+- Zod for structured-output and evidence validation
+- Browser-local session storage for the consented conversation record
 
-To learn more about Next.js, take a look at the following resources:
+## Trust and fairness by design
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- Clear consent before the defense starts
+- Questions grounded in passages from the submitted essay
+- Content-only assessment: never accent, fluency, hesitation, confidence, or language choice
+- Multilingual answers supported without treating language as a quality signal
+- Student transcript review and clarification rights
+- Teacher-controlled findings: approve, dismiss, or annotate
+- Server validation rejects unsupported citations and verdict language
+- The teacher, not Viva, makes decisions
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## How Codex and GPT-5.6 were used
 
-## Deploy on Vercel
+Codex was used throughout the build to implement the application surface, role-specific workflows, real-time defense handling, evidence coverage orchestration, tests, validation, and the judge demo flow.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+At runtime, GPT-5.6 generates the essay argument graph, content-only answer assessments, and the evidence dossier through structured outputs. The realtime defense uses OpenAI’s Realtime Agents SDK. The orchestration policy that chooses the next discussion move is deterministic application code, not a model decision.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Submission notes
+
+OpenAI Build Week submissions require a project description, a public demonstration video shorter than three minutes with audio explaining Codex and GPT-5.6 usage, and a code repository URL. See the [official Build Week page](https://openai.com/build-week/) and [official Devpost rules](https://openai.devpost.com/rules) for the current requirements.
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
