@@ -96,7 +96,7 @@ export default function Home() {
                   </span>
                   <span>
                     <span className="block text-sm font-semibold">Judge demo</span>
-                    <span className="mt-0.5 block text-sm text-white/70">Watch a recorded sample defense</span>
+                    <span className="mt-0.5 block text-sm text-white/70">Watch a sample defense</span>
                   </span>
                 </span>
                 <ArrowRight className="size-5 transition-transform duration-200 group-hover:translate-x-1" />
