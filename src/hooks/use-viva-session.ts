@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   VIVA_SESSION_STORAGE_KEY,
+  VivaSessionSchema,
   activatePendingFocus,
   applyAssessDelta,
   appendRealtimeResponseDiagnostic,
@@ -37,37 +38,37 @@ type SessionUpdater = (
  * deliberately kept outside this hook until `startDefense` is called so no
  * submission is written to browser storage before the student agrees.
  */
-export function useVivaSession() {
+export function useVivaSession(vivaId?: string) {
   const [session, setSession] = useState<VivaSessionState | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const sessionRef = useRef<VivaSessionState | null>(null);
 
   useEffect(() => {
-    const restored = parseVivaSession(
-      window.localStorage.getItem(VIVA_SESSION_STORAGE_KEY),
-    );
-
+    if (vivaId) {
+      void fetch(`/api/vivas/${vivaId}/session`).then(async (response) => {
+        const payload = (await response.json()) as { session?: VivaSessionState | null };
+        const restored = response.ok && payload.session ? VivaSessionSchema.parse(payload.session) : null;
+        sessionRef.current = restored;
+        setSession(restored);
+        setHydrated(true);
+      });
+      return;
+    }
+    const restored = parseVivaSession(window.localStorage.getItem(VIVA_SESSION_STORAGE_KEY));
     sessionRef.current = restored;
     setSession(restored);
     setHydrated(true);
-  }, []);
+  }, [vivaId]);
 
   useEffect(() => {
-    if (!hydrated) {
+    if (!hydrated) return;
+    if (vivaId) {
+      if (session) void fetch(`/api/vivas/${vivaId}/session`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session }) });
       return;
     }
-
-    if (!session) {
-      window.localStorage.removeItem(VIVA_SESSION_STORAGE_KEY);
-      return;
-    }
-
-    window.localStorage.setItem(
-      VIVA_SESSION_STORAGE_KEY,
-      serializeVivaSession(session),
-    );
-  }, [hydrated, session]);
-
+    if (!session) window.localStorage.removeItem(VIVA_SESSION_STORAGE_KEY);
+    else window.localStorage.setItem(VIVA_SESSION_STORAGE_KEY, serializeVivaSession(session));
+  }, [hydrated, session, vivaId]);
   const commit = useCallback((updater: SessionUpdater) => {
     const next = updater(sessionRef.current);
     sessionRef.current = next;

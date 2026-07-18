@@ -42,7 +42,7 @@ export function StudentReview({
         <WorkspaceBanner
           audience="Student workspace"
           description="Read the conversation while it is fresh. If something important was transcribed incorrectly, leave a note for your teacher."
-          tip={`This record is about ${session.submission.title}. When you finish, it returns to the teacher workspace.`}
+          tip={`This record is about ${session.submission.title}. When you finish, it appears as complete in My Vivas.`}
           title="Check the conversation record."
         />
         <section className="mt-9">
@@ -110,8 +110,7 @@ export function StudentReview({
 
         <div className="mt-9 flex flex-col gap-4 border-t border-[#e7e3d8] pt-7 sm:flex-row sm:items-center sm:justify-between">
           <p className="max-w-xl text-sm leading-6 text-[#655d52]">
-            When you finish, this device returns to the teacher workspace. They
-            will use the essay and this record to prepare the evidence summary.
+            When you finish, this Viva is marked complete in your workspace. Your teacher can then review the conversation record.
           </p>
           <Button
             className="shrink-0 bg-[#171717] text-white hover:bg-[#303030]"

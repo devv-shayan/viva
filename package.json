@@ -11,13 +11,18 @@
     "test:live": "vitest run src/lib/analyze.live.integration.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1090.0",
+    "@aws-sdk/s3-request-presigner": "^3.1090.0",
     "@base-ui/react": "^1.6.0",
+    "@node-rs/argon2": "^2.0.2",
     "@openai/agents": "^0.13.4",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.25.0",
+    "mammoth": "^1.12.0",
     "next": "15.5.20",
     "openai": "^6.48.0",
+    "pdf-parse": "^2.4.5",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "shadcn": "^4.13.0",
