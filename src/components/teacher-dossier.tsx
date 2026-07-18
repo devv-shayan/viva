@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Check, CheckCircle2, CircleAlert, ClipboardCheck, FileText, MessageSquareText, PencilLine, Printer, Quote, Trash2, XCircle } from "lucide-react";
+import { Check, CheckCircle2, CircleAlert, ClipboardCheck, FileText, MessageSquareText, PencilLine, Printer, Quote, Send, Trash2, XCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -13,6 +13,7 @@ type Props = {
   onClear: () => void;
   onSaveFindingAction: (claimId: string, action: TeacherAction, note?: string) => void;
   session: VivaSessionState;
+  vivaId?: string;
 };
 
 const statusStyle: Record<FindingStatus, { label: string; tone: string }> = {
@@ -33,9 +34,21 @@ function timeAt(milliseconds: number) {
   return `${Math.floor(seconds / 60)}:${(seconds % 60).toString().padStart(2, "0")}`;
 }
 
-export function TeacherDossier({ onClear, onSaveFindingAction, session }: Props) {
+export function TeacherDossier({ onClear, onSaveFindingAction, session, vivaId }: Props) {
   const [editing, setEditing] = useState<string | null>(null);
   const [note, setNote] = useState("");
+  const [shareState, setShareState] = useState<"idle" | "sharing" | "shared" | "error">("idle");
+  async function shareWithStudent() {
+    if (!vivaId) return;
+    setShareState("sharing");
+    try {
+      const response = await fetch(`/api/vivas/${vivaId}/report/share`, { method: "POST" });
+      if (!response.ok) throw new Error();
+      setShareState("shared");
+    } catch {
+      setShareState("error");
+    }
+  }
   const dossier = session.dossier;
   const claims = useMemo(() => new Map([session.graph.thesis, ...session.graph.claims].map((claim) => [claim.id, claim])), [session.graph]);
   const rubrics = useMemo(() => new Map(session.rubric.map((rubric) => [rubric.id, rubric])), [session.rubric]);
@@ -71,6 +84,7 @@ export function TeacherDossier({ onClear, onSaveFindingAction, session }: Props)
               <Button onClick={() => window.print()} variant="outline">
                 <Printer /> Save report as PDF
               </Button>
+              {vivaId ? <Button className="bg-[#171717] text-white hover:bg-[#303030]" disabled={shareState === "sharing" || shareState === "shared"} onClick={() => void shareWithStudent()}>{shareState === "sharing" ? "Sharing…" : shareState === "shared" ? "Shared with student" : shareState === "error" ? "Try sharing again" : <><Send />Share with student</>}</Button> : null}
               <Button
                 onClick={() => {
                   if (window.confirm("Clear this record? This cannot be undone.")) onClear();

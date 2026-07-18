@@ -1,9 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
-  BookOpen,
+
   Check,
   CircleAlert,
   FileText,
@@ -32,7 +32,7 @@ import type { DefenseDraft } from "@/lib/session-state";
 type TeacherWorkflowProps = {
   initialDraft?: DefenseDraft | null;
   onStartDefense: (draft: DefenseDraft) => void;
-  sampleEssay: string;
+
 };
 
 type AnalyzeResponse = {
@@ -41,6 +41,14 @@ type AnalyzeResponse = {
 };
 
 type Screen = "setup" | "review";
+
+type AssignmentListItem = {
+  id: string;
+  title: string;
+  student_name: string;
+  file_name: string;
+};
+
 
 async function readAnalyzeResponse(
   response: Response,
@@ -77,7 +85,7 @@ function rubricLabel(id: string, rubric: RubricObjective[]) {
 export default function TeacherWorkflow({
   initialDraft,
   onStartDefense,
-  sampleEssay,
+
 }: TeacherWorkflowProps) {
   const [screen, setScreen] = useState<Screen>(() =>
     initialDraft ? "review" : "setup",
@@ -107,7 +115,19 @@ export default function TeacherWorkflow({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isLoadingAssignment, setIsLoadingAssignment] = useState(false);
 
+  const [assignments, setAssignments] = useState<AssignmentListItem[]>([]);
+  const [isLoadingLibrary, setIsLoadingLibrary] = useState(true);
+
+  useEffect(() => {
+    void fetch("/api/assignments")
+      .then(async (response) => {
+        const payload = (await response.json()) as { assignments?: AssignmentListItem[] };
+        if (response.ok) setAssignments(payload.assignments ?? []);
+      })
+      .finally(() => setIsLoadingLibrary(false));
+  }, []);
   const activeClaim = useMemo(() => {
     if (!result) {
       return undefined;
@@ -123,13 +143,42 @@ export default function TeacherWorkflow({
     [activeClaim],
   );
 
-  function loadSample() {
-    setStudentName("Areeba Khan");
-    setTitle("Should Karachi Adopt Congestion Pricing?");
-    setEssay(sampleEssay);
-    setRubric(cloneSampleRubric());
+  async function loadCloudAssignment(assignmentId: string) {
     setError(null);
-    setNotice("Sample essay loaded. Change the discussion topics if you need to.");
+    setNotice(null);
+    setIsLoadingAssignment(true);
+
+    try {
+const assignmentResponse = await fetch(`/api/assignments/${assignmentId}`);
+      const payload = (await assignmentResponse.json()) as {
+        assignment?: {
+          extracted_text: string;
+          student_name: string;
+          title: string;
+        };
+        error?: string;
+      };
+
+      if (!assignmentResponse.ok || !payload.assignment) {
+        throw new Error(payload.error || "Could not load the demo assignment.");
+      }
+
+      setStudentName(payload.assignment.student_name);
+      setTitle(payload.assignment.title);
+      setEssay(payload.assignment.extracted_text);
+      setRubric(cloneSampleRubric());
+      setNotice(
+        "Cloudflare demo assignment loaded. Every extracted character is retained for the evidence review.",
+      );
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Could not load the Cloudflare demo assignment.",
+      );
+    } finally {
+      setIsLoadingAssignment(false);
+    }
   }
 
   function updateRubric(index: number, text: string) {
@@ -222,16 +271,8 @@ export default function TeacherWorkflow({
           <WorkspaceBanner
             actions={
               <>
-                <Button onClick={returnToSetup} size="lg" variant="outline">
-                  Change discussion topics
-                </Button>
-                <Button
-                  className="bg-[#171717] text-white hover:bg-[#303030]"
-                  onClick={startDefense}
-                  size="lg"
-                >
-                  Send to student <ArrowRight />
-                </Button>
+                <Button onClick={returnToSetup} size="lg" variant="outline">Change discussion topics</Button>
+                <Button className="bg-[#171717] text-white hover:bg-[#303030]" onClick={startDefense} size="lg">Send to student <ArrowRight /></Button>
               </>
             }
             audience="Teacher workspace"
@@ -356,16 +397,17 @@ export default function TeacherWorkflow({
     <main className="min-h-screen bg-[#ffffff] px-4 py-6 text-[#171717] sm:px-8 lg:px-12">
       <div className="mx-auto max-w-5xl">
         <WorkspaceBanner
-          actions={
-            <Button className="w-fit" onClick={loadSample} size="lg" variant="outline">
-              <BookOpen /> Load sample essay
-            </Button>
-          }
+          actions={null}
           audience="Teacher workspace"
           description="Paste an essay and choose what matters. Viva keeps every question tied to the ideas and evidence on the page."
           tip="Add a student, the essay, and three discussion topics to create the overview."
           title="Prepare a fair conversation."
         />
+        <section className="mt-6 rounded-[1.5rem] border border-[#e7e3d8] bg-[#faf9f5] p-5 sm:p-6">
+          <div className="flex items-center justify-between gap-4"><div><p className="text-xs font-semibold tracking-[.14em] uppercase text-[#746a5b]">Assignment library</p><h2 className="mt-1 font-serif text-2xl">Choose a student submission</h2></div><span className="text-sm text-[#746a5b]">{isLoadingLibrary ? "Loading…" : `${assignments.length} available`}</span></div>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">{assignments.map((assignment) => <button className="rounded-xl border border-[#e7e3d8] bg-white p-4 text-left transition hover:border-[#c9ab37] hover:bg-[#fff9dc]" disabled={isLoadingAssignment} key={assignment.id} onClick={() => loadCloudAssignment(assignment.id)} type="button"><p className="font-semibold">{assignment.title}</p><p className="mt-1 text-sm text-[#625a4d]">{assignment.student_name}</p><p className="mt-3 text-xs text-[#746a5b]">{assignment.file_name}</p></button>)}</div>
+          {!isLoadingLibrary && assignments.length === 0 ? <p className="mt-4 text-sm text-[#746a5b]">No assignments yet. Ask a student to upload one from the student workspace.</p> : null}
+        </section>
         <form className="pb-8 pt-8" onSubmit={analyze}>
           <div className="grid gap-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(17rem,0.85fr)]">
             <section>

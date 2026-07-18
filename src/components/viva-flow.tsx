@@ -7,6 +7,7 @@ import { LoaderCircle } from "lucide-react";
 import { ConsentScreen } from "@/components/consent-screen";
 import { DefenseRoom } from "@/components/defense-room";
 import { StudentReview } from "@/components/student-review";
+import { StudentAssignmentUpload } from "@/components/student-assignment-upload";
 import { TeacherDossier } from "@/components/teacher-dossier";
 import TeacherWorkflow from "@/components/teacher-workflow";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,7 @@ type VivaFlowProps = {
   examinerInstructions: string;
   role: VivaRole;
   sampleEssay: string;
+  vivaId?: string;
 };
 
 type BoundaryProps = {
@@ -74,6 +76,7 @@ export default function VivaFlow({
   examinerInstructions,
   role,
   sampleEssay,
+vivaId,
 }: VivaFlowProps) {
   const [dossierError, setDossierError] = useState<string | null>(null);
   const [isGeneratingDossier, setIsGeneratingDossier] = useState(false);
@@ -95,8 +98,41 @@ export default function VivaFlow({
     session,
     setPendingFocus,
     startDefense,
-  } = useVivaSession();
+  } = useVivaSession(vivaId);
 
+  async function updateAssignedVivaStatus(status: "student_review" | "completed") {
+    if (!vivaId) return;
+    const response = await fetch(`/api/vivas/${vivaId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+    if (!response.ok) throw new Error("Could not update the Viva status.");
+  }
+
+  function finishDefenseAndStartReview() {
+    const next = completeDefense();
+    if (next && vivaId) void updateAssignedVivaStatus("student_review");
+    return next;
+  }
+
+  async function finishAssignedReview() {
+    const reviewedSession = completeStudentReview();
+    if (!reviewedSession) return;
+    if (vivaId) {
+      await fetch(`/api/vivas/${vivaId}/session`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session: reviewedSession }) });
+    }
+    if (!vivaId) {
+      window.location.assign("/teacher");
+      return;
+    }
+    try {
+      await updateAssignedVivaStatus("completed");
+      router.push("/my-vivas");
+    } catch (error) {
+      setDossierError(error instanceof Error ? error.message : "Could not complete this Viva.");
+    }
+  }
   async function generateDossier() {
     const dossierRequest = getDossierRequest();
     if (!dossierRequest || isGeneratingDossier) {
@@ -123,7 +159,10 @@ export default function VivaFlow({
         );
       }
 
-      saveDossier(payload);
+      const dossierSession = saveDossier(payload);
+      if (vivaId && dossierSession) {
+        await fetch(`/api/vivas/${vivaId}/session`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session: dossierSession }) });
+      }
     } catch (error) {
       setDossierError(
         error instanceof Error
@@ -171,7 +210,7 @@ export default function VivaFlow({
           onApplyAssessment={applyAssessment}
           onAppendRealtimeDiagnostic={appendRealtimeDiagnostic}
           onAppendTurn={appendTurn}
-          onComplete={completeDefense}
+          onComplete={finishDefenseAndStartReview}
           onSetPendingFocus={setPendingFocus}
           session={session}
         />
@@ -181,24 +220,14 @@ export default function VivaFlow({
     if (session?.phase === "student_review") {
       return (
         <StudentReview
-          onCompleteReview={() => {
-            if (completeStudentReview()) {
-              window.location.assign("/teacher");
-            }
-          }}
+          onCompleteReview={() => { void finishAssignedReview(); }}
           onSaveNote={saveReviewNote}
           session={session}
         />
       );
     }
 
-    return (
-      <RoleBoundary
-        heading="Your conversation is not ready yet"
-        message="Your teacher will prepare the essay first. When they hand you the device, return to this page to read the short introduction and choose whether to begin."
-        role="student"
-      />
-    );
+    return <StudentAssignmentUpload />;
   }
 
   if (session?.phase === "defense") {
@@ -268,6 +297,7 @@ export default function VivaFlow({
         }}
         onSaveFindingAction={saveTeacherFindingAction}
         session={session}
+        vivaId={vivaId}
       />
     );
   }
@@ -279,7 +309,6 @@ export default function VivaFlow({
         setDraft(nextDraft);
         router.push("/student");
       }}
-      sampleEssay={sampleEssay}
     />
   );
 }
