@@ -394,6 +394,13 @@ export function getExpectedFindingStatus(
     return "needs_review";
   }
 
+  // An answered claim can remain "asked" only when assessment did not land
+  // (for example, a timeout followed by the deterministic fallback). That is
+  // an infrastructure gap, not evidence that the student failed to explain it.
+  if (coverageStatus === "asked") {
+    return "needs_review";
+  }
+
   return "not_demonstrated";
 }
 

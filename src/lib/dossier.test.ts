@@ -248,6 +248,52 @@ describe("Viva dossier validation", () => {
     expect(dossier.notTested).toEqual(["c1", "c2", "c3", "c4"]);
   });
 
+  it("routes an answered but unassessed claim to human review after an assessment timeout", async () => {
+    const timedOutRequest = structuredClone(request);
+    const c2Coverage = timedOutRequest.coverage.find(
+      (entry) => entry.claimId === "c2",
+    );
+
+    if (!c2Coverage) {
+      throw new Error("The fixture needs c2 coverage.");
+    }
+
+    c2Coverage.status = "asked";
+    timedOutRequest.assessmentLedger = timedOutRequest.assessmentLedger.filter(
+      (record) => record.claimId !== "c2",
+    );
+
+    const timedOutDraft = structuredClone(validDraft);
+    const c2Finding = timedOutDraft.findings.find(
+      (finding) => finding.claimId === "c2",
+    );
+
+    if (!c2Finding) {
+      throw new Error("The fixture needs a c2 dossier finding.");
+    }
+
+    c2Finding.status = "needs_review";
+
+    await expect(
+      generateValidatedDossier({
+        request: DossierRequestSchema.parse(timedOutRequest),
+        generate: async () => timedOutDraft,
+      }),
+    ).resolves.toMatchObject({
+      findings: expect.arrayContaining([
+        expect.objectContaining({ claimId: "c2", status: "needs_review" }),
+      ]),
+    });
+
+    c2Finding.status = "not_demonstrated";
+    expect(
+      getDossierValidationIssues(
+        finalizeDossier(timedOutDraft, DossierRequestSchema.parse(timedOutRequest)),
+        DossierRequestSchema.parse(timedOutRequest),
+      ).join("\n"),
+    ).toContain("status must be needs_review");
+  });
+
   it("rejects an unsafe draft and regenerates from server-authored validation feedback", async () => {
     const unsafeDraft = structuredClone(validDraft);
     unsafeDraft.summary = "This looks AI-generated.";
