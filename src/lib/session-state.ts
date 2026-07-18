@@ -135,6 +135,7 @@ export const VivaSessionSchema = z
       })
       .strict()
       .optional(),
+    studentReviewCompletedAt: z.string().datetime().optional(),
     dossier: DossierSchema.optional(),
   })
   .strict()
@@ -697,6 +698,7 @@ export function finishDefense(session: VivaSessionState): VivaSessionState {
     phase: "student_review",
     activeFocus: undefined,
     pendingFocus: undefined,
+    studentReviewCompletedAt: undefined,
   };
 }
 
@@ -712,6 +714,19 @@ export function saveStudentReviewNote(
   };
 }
 
+export function completeStudentReview(
+  session: VivaSessionState,
+  completedAt = new Date().toISOString(),
+): VivaSessionState {
+  if (session.phase !== "student_review") {
+    throw new Error("The conversation must end before the student can review it.");
+  }
+
+  return {
+    ...session,
+    studentReviewCompletedAt: completedAt,
+  };
+}
 /**
  * Produces the minimal, consented evidence record accepted by POST
  * /api/dossier. Realtime diagnostics stay local and are deliberately not sent
@@ -742,8 +757,12 @@ export function saveDossier(
   session: VivaSessionState,
   dossier: Dossier,
 ): VivaSessionState {
-  if (session.phase === "defense") {
-    throw new Error("Finish the defense before saving a teacher dossier.");
+  if (session.phase !== "student_review") {
+    throw new Error("The student must finish their review before a teacher summary can be saved.");
+  }
+
+  if (!session.studentReviewCompletedAt) {
+    throw new Error("Wait for the student to finish reviewing the conversation record.");
   }
 
   const parsedDossier = DossierSchema.parse(dossier);

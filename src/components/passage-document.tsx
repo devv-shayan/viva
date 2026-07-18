@@ -75,7 +75,7 @@ export function PassageDocument({
           <section
             className={`border-l-2 pl-4 transition-colors ${
               paragraphHighlights.length > 0
-                ? "border-[#d2a93e] bg-[#fff7df] py-2"
+                ? "border-[#e6bb28] bg-[#fff8dc] py-2"
                 : "border-[#e5ded3]"
             }`}
             key={paragraph.id}
@@ -83,7 +83,7 @@ export function PassageDocument({
             <p className="mb-2 text-xs font-semibold tracking-[0.14em] text-[#877c6b] uppercase">
               {paragraph.id}
             </p>
-            <p className="font-serif text-[1.04rem] leading-8 text-[#38332b]">
+            <p className="font-serif text-[1.04rem] leading-8 text-[#292824]">
               {splitWithHighlights(paragraph.text, paragraphHighlights)}
             </p>
           </section>
