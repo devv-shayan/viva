@@ -51,6 +51,8 @@ export async function POST(request: Request) {
       assignment: { id, title: title || file.name.replace(/\.[^.]+$/, ""), student_name: studentName, extracted_text: extractedText },
     });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Could not upload the assignment." }, { status: error instanceof AuthError ? error.status : 502 });
+    console.error("Assignment upload failed", { message: error instanceof Error ? error.message : "Unknown error" });
+    const message = error instanceof AuthError ? error.message : "Could not read this document. Use a text-based PDF or DOCX. Scanned PDFs need OCR support.";
+    return NextResponse.json({ error: message }, { status: error instanceof AuthError ? error.status : 422 });
   }
 }

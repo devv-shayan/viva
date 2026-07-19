@@ -24,8 +24,8 @@ export async function POST(request: Request) {
   try {
     const teacher = await requireRole("teacher");
     const input = createSchema.parse(await request.json());
-    const classroom = { id: crypto.randomUUID(), name: input.name, joinCode: joinCode() };
-    await queryAssignments("INSERT INTO classes (id, teacher_id, name, join_code) VALUES (?, ?, ?, ?)", [classroom.id, teacher.id, classroom.name, classroom.joinCode]);
+    const classroom = { id: crypto.randomUUID(), name: input.name, join_code: joinCode() };
+    await queryAssignments("INSERT INTO classes (id, teacher_id, name, join_code) VALUES (?, ?, ?, ?)", [classroom.id, teacher.id, classroom.name, classroom.join_code]);
     return NextResponse.json({ classroom }, { status: 201 });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Could not create class." }, { status: error instanceof AuthError ? error.status : 400 });
