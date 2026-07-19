@@ -14,6 +14,7 @@ import {
 } from "./analysis-types";
 import type { AssessDelta } from "./assess-types";
 import {
+  DossierAnswerGroupSchema,
   DossierAssessmentRecordSchema,
   DossierRequestSchema,
   DossierSchema,
@@ -25,7 +26,7 @@ import {
 } from "./dossier-types";
 
 export const VIVA_SESSION_STORAGE_KEY = "viva:session:v1";
-const STORAGE_VERSION = 1;
+const STORAGE_VERSION = 2;
 
 export const ClaimStatusSchema = z.enum([
   "untested",
@@ -46,8 +47,7 @@ export const CoverageEntrySchema = z
   .object({
     claimId: z.string().min(1),
     status: ClaimStatusSchema,
-    questionTurnIds: z.array(z.string().min(1)),
-    answerTurnIds: z.array(z.string().min(1)),
+    answerGroups: z.array(DossierAnswerGroupSchema).max(6),
     movesUsed: z.array(MoveTypeSchema),
   })
   .strict();
@@ -202,6 +202,63 @@ export const VivaSessionSchema = z
       }
     }
 
+    const answerGroupIds = new Set<string>();
+    const questionTurnIds = new Set<string>();
+    const answerTurnIds = new Set<string>();
+
+    for (const coverage of session.coverage) {
+      for (const group of coverage.answerGroups) {
+        const question = turnById.get(group.questionTurnId);
+
+        if (
+          answerGroupIds.has(group.id) ||
+          group.id !== answerGroupIdForQuestionTurn(group.questionTurnId)
+        ) {
+          context.addIssue({
+            code: "custom",
+            message: `Coverage for ${coverage.claimId} has an invalid answer group ID.`,
+            path: ["coverage"],
+          });
+          continue;
+        }
+
+        answerGroupIds.add(group.id);
+
+        if (
+          questionTurnIds.has(group.questionTurnId) ||
+          question?.speaker !== "agent"
+        ) {
+          context.addIssue({
+            code: "custom",
+            message: `Coverage for ${coverage.claimId} must use one unique agent question per answer group.`,
+            path: ["coverage"],
+          });
+          continue;
+        }
+
+        questionTurnIds.add(group.questionTurnId);
+
+        for (const answerTurnId of group.answerTurnIds) {
+          const answer = turnById.get(answerTurnId);
+
+          if (
+            answerTurnIds.has(answerTurnId) ||
+            answer?.speaker !== "student" ||
+            answer.t <= question.t
+          ) {
+            context.addIssue({
+              code: "custom",
+              message: `Coverage for ${coverage.claimId} must keep complete student fragments after their question.`,
+              path: ["coverage"],
+            });
+            break;
+          }
+
+          answerTurnIds.add(answerTurnId);
+        }
+      }
+    }
+
     const paragraphs = new Map(
       session.submission.paragraphs.map((paragraph) => [
         paragraph.id,
@@ -250,26 +307,16 @@ export const VivaSessionSchema = z
         continue;
       }
 
-      if (new Set(record.answerTurnIds).size !== record.answerTurnIds.length) {
+      const answerGroup = coverage.answerGroups.find(
+        (group) => group.id === record.answerGroupId,
+      );
+
+      if (!answerGroup || answerGroup.answerTurnIds.length === 0) {
         context.addIssue({
           code: "custom",
-          message: `Assessment record for ${record.claimId} repeats an answer turn ID.`,
+          message: `Assessment record for ${record.claimId} must cite one answered recorded group.`,
           path: ["assessmentLedger"],
         });
-      }
-
-      for (const answerTurnId of record.answerTurnIds) {
-        if (
-          !coverage.answerTurnIds.includes(answerTurnId) ||
-          turnById.get(answerTurnId)?.speaker !== "student"
-        ) {
-          context.addIssue({
-            code: "custom",
-            message: `Assessment record for ${record.claimId} must cite one of its student answer turns.`,
-            path: ["assessmentLedger"],
-          });
-          break;
-        }
       }
     }
 
@@ -315,9 +362,9 @@ export const VivaSessionSchema = z
 
 const StoredSessionEnvelopeSchema = z
   .object({
-    version: z.literal(STORAGE_VERSION),
+    version: z.union([z.literal(1), z.literal(STORAGE_VERSION)]),
     savedAt: z.string().min(1),
-    session: VivaSessionSchema,
+    session: z.unknown(),
   })
   .strict();
 
@@ -331,6 +378,15 @@ export type RealtimeResponseDiagnostic = z.infer<
 >;
 export type Transcript = z.infer<typeof TranscriptSchema>;
 export type VivaSessionState = z.infer<typeof VivaSessionSchema>;
+export type TranscriptAppendOptions = {
+  /**
+   * Associate a student final transcription with a specific already-recorded
+   * Viva question. The live room supplies this snapshot so a late ASR event
+   * cannot drift onto a newly injected FOCUS.
+   */
+  answerGroupClaimId?: string;
+  answerGroupId?: string;
+};
 
 export type DefenseDraft = {
   submission: Submission;
@@ -412,8 +468,7 @@ export function createCoverage(graph: ArgumentGraph): CoverageEntry[] {
   return claimsForGraph(graph).map((claim) => ({
     claimId: claim.id,
     status: "untested",
-    questionTurnIds: [],
-    answerTurnIds: [],
+    answerGroups: [],
     movesUsed: [],
   }));
 }
@@ -489,18 +544,264 @@ function addUnique(values: string[], value: string) {
   return values.includes(value) ? values : [...values, value];
 }
 
+export function answerGroupIdForQuestionTurn(questionTurnId: string) {
+  return `answer-group:${questionTurnId}`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function uniqueStringIds(value: unknown) {
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
+    return null;
+  }
+
+  return [...new Set(value)];
+}
+
+function legacyGroupForAnswerIds(
+  coverage: CoverageEntry[],
+  claimId: string,
+  answerTurnIds: string[],
+  questionTurnId?: string,
+) {
+  return coverage
+    .find((entry) => entry.claimId === claimId)
+    ?.answerGroups.find(
+      (group) =>
+        (!questionTurnId || group.questionTurnId === questionTurnId) &&
+        answerTurnIds.every((answerTurnId) =>
+          group.answerTurnIds.includes(answerTurnId),
+        ),
+    );
+}
+
+/**
+ * Converts the immediately preceding coverage shape (separate question and
+ * answer ID lists) into complete answer groups. The old shape did not store
+ * an explicit link, so the only fair reconstruction is chronological: attach
+ * each captured student turn to the latest question for that claim that came
+ * before it. A one-question claim also keeps early ASR output with that sole
+ * question, which mirrors the old live-event ordering.
+ */
+function migrateLegacyVivaSession(value: unknown): VivaSessionState | null {
+  if (!isRecord(value) || !Array.isArray(value.coverage) || !isRecord(value.transcript)) {
+    return null;
+  }
+
+  const rawTurns = value.transcript.turns;
+
+  if (!Array.isArray(rawTurns)) {
+    return null;
+  }
+
+  const turnsById = new Map<string, { speaker: string; t: number }>();
+
+  for (const rawTurn of rawTurns) {
+    if (
+      !isRecord(rawTurn) ||
+      typeof rawTurn.id !== "string" ||
+      typeof rawTurn.speaker !== "string" ||
+      typeof rawTurn.t !== "number"
+    ) {
+      return null;
+    }
+
+    turnsById.set(rawTurn.id, { speaker: rawTurn.speaker, t: rawTurn.t });
+  }
+
+  const coverage: CoverageEntry[] = [];
+
+  for (const rawEntry of value.coverage) {
+    if (!isRecord(rawEntry)) {
+      return null;
+    }
+
+    const claimId = rawEntry.claimId;
+    const questionTurnIds = uniqueStringIds(rawEntry.questionTurnIds);
+    const answerTurnIds = uniqueStringIds(rawEntry.answerTurnIds);
+
+    if (
+      typeof claimId !== "string" ||
+      typeof rawEntry.status !== "string" ||
+      questionTurnIds === null ||
+      answerTurnIds === null ||
+      !Array.isArray(rawEntry.movesUsed)
+    ) {
+      return null;
+    }
+
+    const questions = questionTurnIds
+      .map((id) => ({ id, turn: turnsById.get(id) }))
+      .filter(
+        (candidate): candidate is { id: string; turn: { speaker: string; t: number } } =>
+          candidate.turn?.speaker === "agent",
+      )
+      .sort((left, right) => left.turn.t - right.turn.t);
+
+    if (questions.length !== questionTurnIds.length) {
+      return null;
+    }
+
+    const groupedAnswerIds = questions.map(() => [] as string[]);
+
+    for (const answerTurnId of answerTurnIds) {
+      const answer = turnsById.get(answerTurnId);
+
+      if (answer?.speaker !== "student") {
+        return null;
+      }
+
+      let targetQuestionIndex = -1;
+
+      for (let index = 0; index < questions.length; index += 1) {
+        if (questions[index].turn.t < answer.t) {
+          targetQuestionIndex = index;
+        }
+      }
+
+      if (targetQuestionIndex < 0 && questions.length === 1) {
+        targetQuestionIndex = 0;
+      }
+
+      if (targetQuestionIndex >= 0) {
+        groupedAnswerIds[targetQuestionIndex].push(answerTurnId);
+      }
+    }
+
+    coverage.push({
+      claimId,
+      status: rawEntry.status as ClaimStatus,
+      movesUsed: rawEntry.movesUsed as MoveType[],
+      answerGroups: questions.map((question, index) => ({
+        id: answerGroupIdForQuestionTurn(question.id),
+        questionTurnId: question.id,
+        answerTurnIds: groupedAnswerIds[index],
+      })),
+    });
+  }
+
+  const rawLedger = Array.isArray(value.assessmentLedger)
+    ? value.assessmentLedger
+    : [];
+  const assessmentLedger: DossierAssessmentRecord[] = [];
+
+  for (const rawRecord of rawLedger) {
+    if (!isRecord(rawRecord) || typeof rawRecord.claimId !== "string") {
+      continue;
+    }
+
+    const answerTurnIds = uniqueStringIds(rawRecord.answerTurnIds);
+
+    if (!answerTurnIds || answerTurnIds.length === 0) {
+      continue;
+    }
+
+    const group = legacyGroupForAnswerIds(
+      coverage,
+      rawRecord.claimId,
+      answerTurnIds,
+    );
+
+    if (!group) {
+      continue;
+    }
+
+    const record = { ...rawRecord };
+    delete record.answerTurnIds;
+    const parsedRecord = DossierAssessmentRecordSchema.safeParse({
+      ...record,
+      answerGroupId: group.id,
+    });
+
+    if (parsedRecord.success) {
+      assessmentLedger.push(parsedRecord.data);
+    }
+  }
+
+  const migrated: Record<string, unknown> = {
+    ...value,
+    coverage,
+    assessmentLedger,
+  };
+
+  if (isRecord(value.dossier) && Array.isArray(value.dossier.findings)) {
+    const findings = [];
+    let canKeepDossier = true;
+
+    for (const rawFinding of value.dossier.findings) {
+      if (
+        !isRecord(rawFinding) ||
+        typeof rawFinding.claimId !== "string" ||
+        typeof rawFinding.questionTurnId !== "string"
+      ) {
+        canKeepDossier = false;
+        break;
+      }
+
+      const answerTurnIds = uniqueStringIds(rawFinding.answerTurnIds);
+      const group =
+        answerTurnIds &&
+        legacyGroupForAnswerIds(
+          coverage,
+          rawFinding.claimId,
+          answerTurnIds,
+          rawFinding.questionTurnId,
+        );
+
+      if (!group) {
+        canKeepDossier = false;
+        break;
+      }
+
+      const finding = { ...rawFinding };
+      delete finding.answerTurnIds;
+      delete finding.questionTurnId;
+      findings.push({ ...finding, answerGroupId: group.id });
+    }
+
+    if (canKeepDossier) {
+      migrated.dossier = { ...value.dossier, findings };
+    } else {
+      // Never preserve a legacy report by guessing a partial citation. The
+      // consented transcript remains available for a fresh, validated dossier.
+      delete migrated.dossier;
+
+      if (migrated.phase === "dossier") {
+        migrated.phase = "student_review";
+      }
+    }
+  }
+
+  const parsed = VivaSessionSchema.safeParse(migrated);
+  return parsed.success ? parsed.data : null;
+}
+
+/** Accepts current persisted state and the one legacy transcript shape. */
+export function parsePersistedVivaSession(value: unknown): VivaSessionState | null {
+  const current = VivaSessionSchema.safeParse(value);
+
+  return current.success ? current.data : migrateLegacyVivaSession(value);
+}
+
 function updateCoverageForTurn(
   session: VivaSessionState,
   turn: TranscriptTurn,
+  options: TranscriptAppendOptions = {},
 ): CoverageEntry[] {
   const focus = session.activeFocus;
+  const claimId =
+    turn.speaker === "student"
+      ? options.answerGroupClaimId ?? focus?.claimId
+      : focus?.claimId;
 
-  if (!focus) {
+  if (!claimId) {
     return session.coverage;
   }
 
   return session.coverage.map((entry) => {
-    if (entry.claimId !== focus.claimId) {
+    if (entry.claimId !== claimId) {
       return entry;
     }
 
@@ -508,16 +809,42 @@ function updateCoverageForTurn(
       return {
         ...entry,
         status: entry.status === "untested" ? "asked" : entry.status,
-        questionTurnIds: addUnique(entry.questionTurnIds, turn.id),
-        movesUsed: entry.movesUsed.includes(focus.move)
+        answerGroups: entry.answerGroups.some(
+          (group) => group.id === answerGroupIdForQuestionTurn(turn.id),
+        )
+          ? entry.answerGroups
+          : [
+              ...entry.answerGroups,
+              {
+                id: answerGroupIdForQuestionTurn(turn.id),
+                questionTurnId: turn.id,
+                answerTurnIds: [],
+              },
+            ],
+        movesUsed: focus && entry.movesUsed.includes(focus.move)
           ? entry.movesUsed
-          : [...entry.movesUsed, focus.move],
+          : focus
+            ? [...entry.movesUsed, focus.move]
+            : entry.movesUsed,
       };
+    }
+
+    const answerGroupId = options.answerGroupId ?? entry.answerGroups.at(-1)?.id;
+
+    if (!answerGroupId) {
+      return entry;
     }
 
     return {
       ...entry,
-      answerTurnIds: addUnique(entry.answerTurnIds, turn.id),
+      answerGroups: entry.answerGroups.map((group) =>
+        group.id === answerGroupId
+          ? {
+              ...group,
+              answerTurnIds: addUnique(group.answerTurnIds, turn.id),
+            }
+          : group,
+      ),
     };
   });
 }
@@ -525,6 +852,7 @@ function updateCoverageForTurn(
 export function appendTranscriptTurn(
   session: VivaSessionState,
   turn: TranscriptTurn,
+  options: TranscriptAppendOptions = {},
 ): VivaSessionState {
   const normalizedTurn = TranscriptTurnSchema.parse({
     ...turn,
@@ -554,7 +882,7 @@ export function appendTranscriptTurn(
   return {
     ...session,
     transcript,
-    coverage: updateCoverageForTurn(session, normalizedTurn),
+    coverage: updateCoverageForTurn(session, normalizedTurn, options),
   };
 }
 
@@ -603,35 +931,26 @@ export function applyAssessDeltaToCoverage(
 function createAssessmentRecord(
   session: VivaSessionState,
   delta: AssessDelta,
-  answerTurnIds: string[],
+  answerGroupId: string | undefined,
 ): DossierAssessmentRecord | undefined {
-  const uniqueAnswerTurnIds = [...new Set(answerTurnIds)];
-
-  if (uniqueAnswerTurnIds.length === 0) {
+  if (!answerGroupId) {
     return undefined;
   }
 
   const coverage = session.coverage.find(
     (entry) => entry.claimId === delta.claimId,
   );
-  const turnsById = new Map(
-    session.transcript.turns.map((turn) => [turn.id, turn]),
+  const answerGroup = coverage?.answerGroups.find(
+    (group) => group.id === answerGroupId,
   );
 
-  if (
-    !coverage ||
-    uniqueAnswerTurnIds.some(
-      (answerTurnId) =>
-        !coverage.answerTurnIds.includes(answerTurnId) ||
-        turnsById.get(answerTurnId)?.speaker !== "student",
-    )
-  ) {
+  if (!answerGroup || answerGroup.answerTurnIds.length === 0) {
     return undefined;
   }
 
   return DossierAssessmentRecordSchema.parse({
     ...delta,
-    answerTurnIds: uniqueAnswerTurnIds,
+    answerGroupId,
   });
 }
 
@@ -639,11 +958,11 @@ function addAssessmentRecord(
   ledger: DossierAssessmentRecord[],
   record: DossierAssessmentRecord,
 ) {
-  const recordKey = `${record.claimId}:${record.answerTurnIds.join("|")}`;
+  const recordKey = `${record.claimId}:${record.answerGroupId}`;
 
   return [
     ...ledger.filter(
-      (item) => `${item.claimId}:${item.answerTurnIds.join("|")}` !== recordKey,
+      (item) => `${item.claimId}:${item.answerGroupId}` !== recordKey,
     ),
     record,
   ].slice(-20);
@@ -652,21 +971,22 @@ function addAssessmentRecord(
 export function applyAssessDelta(
   session: VivaSessionState,
   delta: AssessDelta,
-  answerTurnIds: string[] = [],
+  answerGroupId?: string,
 ): VivaSessionState {
-  if (session.activeFocus?.claimId !== delta.claimId) {
+  if (!answerGroupId && session.activeFocus?.claimId !== delta.claimId) {
     return session;
   }
 
   const assessmentRecord = createAssessmentRecord(
     session,
     delta,
-    answerTurnIds,
+    answerGroupId,
   );
 
-  // A caller that supplies answer IDs must supply stable student turns for the
-  // active focus. Never update coverage with an untraceable assessment.
-  if (answerTurnIds.length > 0 && !assessmentRecord) {
+  // A caller that supplies an answer group must supply one complete recorded
+  // group for the active focus. Never update coverage from a fragment that
+  // cannot be traced back to its Viva question.
+  if (answerGroupId && !assessmentRecord) {
     return session;
   }
 
@@ -684,7 +1004,7 @@ export function createPreviewNextFocus(
 ): Focus | undefined {
   const nextClaim = claimsForGraph(session.graph).find((claim) => {
     const coverage = session.coverage.find((entry) => entry.claimId === claim.id);
-    return coverage?.questionTurnIds.length === 0;
+    return coverage?.answerGroups.length === 0;
   });
 
   return nextClaim
@@ -865,7 +1185,7 @@ export function parseVivaSession(value: string | null): VivaSessionState | null 
 
   try {
     const parsed = StoredSessionEnvelopeSchema.safeParse(JSON.parse(value));
-    return parsed.success ? parsed.data.session : null;
+    return parsed.success ? parsePersistedVivaSession(parsed.data.session) : null;
   } catch {
     return null;
   }

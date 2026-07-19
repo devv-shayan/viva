@@ -29,12 +29,26 @@ export const DossierMoveTypeSchema = z.enum([
   "wrap",
 ]);
 
+/**
+ * One Viva question and every final student transcript fragment that belongs
+ * to it. Keeping this as one object prevents a report from pairing a valid
+ * question with only part of the answer that was actually captured.
+ */
+export const DossierAnswerGroupSchema = z
+  .object({
+    id: z.string().min(1),
+    questionTurnId: z.string().min(1),
+    // Final ASR can split a single spoken answer into several events. Keep a
+    // generous cap so captured fragments remain representable as one answer.
+    answerTurnIds: z.array(z.string().min(1)).max(12),
+  })
+  .strict();
+
 export const DossierCoverageEntrySchema = z
   .object({
     claimId: z.string().min(1),
     status: DossierClaimStatusSchema,
-    questionTurnIds: z.array(z.string().min(1)).max(6),
-    answerTurnIds: z.array(z.string().min(1)).max(6),
+    answerGroups: z.array(DossierAnswerGroupSchema).max(6),
     movesUsed: z.array(DossierMoveTypeSchema).max(6),
   })
   .strict();
@@ -59,7 +73,9 @@ export const DossierTranscriptSchema = z
         spokenConfirmationTurnId: z.string().min(1).optional(),
       })
       .strict(),
-    turns: z.array(DossierTurnSchema).min(1).max(30),
+    // Six questions may each have several final ASR fragments; do not make a
+    // complete grouped record impossible merely because speech was segmented.
+    turns: z.array(DossierTurnSchema).min(1).max(100),
   })
   .strict();
 
@@ -88,7 +104,7 @@ export const DossierAssessmentQualitySchema = z.enum([
 export const DossierAssessmentRecordSchema = z
   .object({
     claimId: z.string().min(1),
-    answerTurnIds: z.array(z.string().min(1)).min(1).max(3),
+    answerGroupId: z.string().min(1),
     quality: DossierAssessmentQualitySchema,
     evidenceCited: z.boolean(),
     note: z.string().trim().min(1).max(500),
@@ -114,6 +130,9 @@ export const DossierRequestSchema = z
     );
     const turnById = new Map(request.transcript.turns.map((turn) => [turn.id, turn]));
     const rubricIds = new Set(request.rubric.map((objective) => objective.id));
+    const coverageGroupIds = new Set<string>();
+    const coverageQuestionIds = new Set<string>();
+    const coverageAnswerIds = new Set<string>();
 
     if (request.transcript.studentName !== request.submission.studentName) {
       context.addIssue({
@@ -166,42 +185,72 @@ export const DossierRequestSchema = z
         });
       }
 
-      for (const questionId of entry.questionTurnIds) {
-        if (turnById.get(questionId)?.speaker !== "agent") {
+      for (const group of entry.answerGroups) {
+        const questionTurn = turnById.get(group.questionTurnId);
+
+        if (coverageGroupIds.has(group.id)) {
           context.addIssue({
             code: "custom",
-            message: `${entry.claimId} questionTurnIds must cite agent turns.`,
+            message: `${entry.claimId} must not repeat answer group IDs.`,
             path: ["coverage"],
           });
           break;
         }
-      }
 
-      if (new Set(entry.questionTurnIds).size !== entry.questionTurnIds.length) {
-        context.addIssue({
-          code: "custom",
-          message: `${entry.claimId} must not repeat question turn IDs.`,
-          path: ["coverage"],
-        });
-      }
+        coverageGroupIds.add(group.id);
 
-      for (const answerId of entry.answerTurnIds) {
-        if (turnById.get(answerId)?.speaker !== "student") {
+        if (questionTurn?.speaker !== "agent") {
           context.addIssue({
             code: "custom",
-            message: `${entry.claimId} answerTurnIds must cite student turns.`,
+            message: `${entry.claimId} answer groups must cite agent question turns.`,
             path: ["coverage"],
           });
           break;
         }
-      }
 
-      if (new Set(entry.answerTurnIds).size !== entry.answerTurnIds.length) {
-        context.addIssue({
-          code: "custom",
-          message: `${entry.claimId} must not repeat answer turn IDs.`,
-          path: ["coverage"],
-        });
+        if (coverageQuestionIds.has(group.questionTurnId)) {
+          context.addIssue({
+            code: "custom",
+            message: `${entry.claimId} must not repeat question turn IDs.`,
+            path: ["coverage"],
+          });
+          break;
+        }
+
+        coverageQuestionIds.add(group.questionTurnId);
+
+        for (const answerId of group.answerTurnIds) {
+          const answerTurn = turnById.get(answerId);
+
+          if (answerTurn?.speaker !== "student") {
+            context.addIssue({
+              code: "custom",
+              message: `${entry.claimId} answer groups must cite student turns.`,
+              path: ["coverage"],
+            });
+            break;
+          }
+
+          if (coverageAnswerIds.has(answerId)) {
+            context.addIssue({
+              code: "custom",
+              message: `${entry.claimId} must not repeat answer turn IDs.`,
+              path: ["coverage"],
+            });
+            break;
+          }
+
+          if (answerTurn.t <= questionTurn.t) {
+            context.addIssue({
+              code: "custom",
+              message: `${entry.claimId} answer groups must place answers after their question.`,
+              path: ["coverage"],
+            });
+            break;
+          }
+
+          coverageAnswerIds.add(answerId);
+        }
       }
     }
 
@@ -217,24 +266,14 @@ export const DossierRequestSchema = z
         continue;
       }
 
-      for (const answerId of record.answerTurnIds) {
-        if (
-          !coverage.answerTurnIds.includes(answerId) ||
-          turnById.get(answerId)?.speaker !== "student"
-        ) {
-          context.addIssue({
-            code: "custom",
-            message: `Assessment record for ${record.claimId} must cite its student answer turn.`,
-            path: ["assessmentLedger"],
-          });
-          break;
-        }
-      }
+      const answerGroup = coverage.answerGroups.find(
+        (group) => group.id === record.answerGroupId,
+      );
 
-      if (new Set(record.answerTurnIds).size !== record.answerTurnIds.length) {
+      if (!answerGroup || answerGroup.answerTurnIds.length === 0) {
         context.addIssue({
           code: "custom",
-          message: `Assessment record for ${record.claimId} must not repeat answer turn IDs.`,
+          message: `Assessment record for ${record.claimId} must cite one answered recorded group.`,
           path: ["assessmentLedger"],
         });
       }
@@ -285,8 +324,7 @@ export const DossierFindingSchema = z
   .object({
     rubricId: z.string().min(1),
     claimId: z.string().min(1),
-    questionTurnId: z.string().min(1),
-    answerTurnIds: z.array(z.string().min(1)).min(1).max(6),
+    answerGroupId: z.string().min(1),
     passage: PassageRefSchema,
     status: FindingStatusSchema,
     observation: z.string().trim().min(1).max(700),
@@ -323,6 +361,7 @@ export const DossierModelOutputSchema = z
   .strict();
 
 export type DossierRequest = z.infer<typeof DossierRequestSchema>;
+export type DossierAnswerGroup = z.infer<typeof DossierAnswerGroupSchema>;
 export type DossierAssessmentRecord = z.infer<
   typeof DossierAssessmentRecordSchema
 >;
@@ -361,8 +400,7 @@ export function getReportableDossierClaimIds(request: DossierRequest) {
       const coverage = coverageForClaim(request, claim.id);
       return Boolean(
         coverage &&
-          coverage.questionTurnIds.length > 0 &&
-          coverage.answerTurnIds.length > 0,
+          coverage.answerGroups.some((group) => group.answerTurnIds.length > 0),
       );
     })
     .map((claim) => claim.id);
@@ -371,7 +409,7 @@ export function getReportableDossierClaimIds(request: DossierRequest) {
 export function getNotTestedDossierClaimIds(request: DossierRequest) {
   return request.graph.claims
     .filter(
-      (claim) => (coverageForClaim(request, claim.id)?.questionTurnIds.length ?? 0) === 0,
+      (claim) => (coverageForClaim(request, claim.id)?.answerGroups.length ?? 0) === 0,
     )
     .map((claim) => claim.id);
 }
@@ -463,7 +501,12 @@ export function getDossierValidationIssues(
   for (const finding of dossier.findings) {
     const claim = claimMap.get(finding.claimId);
     const coverage = coverageForClaim(request, finding.claimId);
-    const questionTurn = turnById.get(finding.questionTurnId);
+    const answerGroup = coverage?.answerGroups.find(
+      (group) => group.id === finding.answerGroupId,
+    );
+    const questionTurn = answerGroup
+      ? turnById.get(answerGroup.questionTurnId)
+      : undefined;
 
     if (!claim || !coverage) {
       issues.push(`Finding references unknown claim ${finding.claimId}.`);
@@ -476,22 +519,18 @@ export function getDossierValidationIssues(
 
     if (
       questionTurn?.speaker !== "agent" ||
-      !coverage.questionTurnIds.includes(finding.questionTurnId)
+      !answerGroup ||
+      answerGroup.answerTurnIds.length === 0
     ) {
-      issues.push(`Finding ${finding.claimId} must cite one of its agent question turns.`);
+      issues.push(
+        `Finding ${finding.claimId} must cite one complete answered group.`,
+      );
     }
 
-    if (new Set(finding.answerTurnIds).size !== finding.answerTurnIds.length) {
-      issues.push(`Finding ${finding.claimId} must not repeat answer turn IDs.`);
-    }
-
-    for (const answerTurnId of finding.answerTurnIds) {
+    for (const answerTurnId of answerGroup?.answerTurnIds ?? []) {
       const answerTurn = turnById.get(answerTurnId);
 
-      if (
-        answerTurn?.speaker !== "student" ||
-        !coverage.answerTurnIds.includes(answerTurnId)
-      ) {
+      if (answerTurn?.speaker !== "student") {
         issues.push(`Finding ${finding.claimId} must cite one of its student answer turns.`);
         break;
       }

@@ -50,12 +50,14 @@ Trust point: teacher sees and approves the interview plan — no hidden agenda.
 ## Screen 3 — Student consent
 
 > **This is a chance to show your understanding — not a test of your speaking.**
-> - The conversation is recorded; your teacher sees the transcript and a summary.
+> - Viva stores a consented text transcript of the speech-recognition fragments
+>   it captures; your teacher sees that transcript and a summary. Viva does not
+>   retain an audio recording.
 > - Viva never judges who wrote your work and never gives grades or verdicts.
 > - Answer in whichever language is comfortable — content is what counts,
 >   not accent or fluency.
 > - Afterwards you'll review the transcript and can flag anything you think
->   was misunderstood. Your teacher makes all decisions.
+>   was misunderstood or missed. Your teacher makes all decisions.
 > - You can pause anytime. [ ✓ I understand ] [ Begin ]
 
 ## Screen 4 — Defense room
@@ -80,8 +82,11 @@ The passage highlight moving in sync with each question IS the
 
 ## Screen 5a — Student review (before teacher sees it)
 
-> Here's the transcript. If Viva misunderstood an answer, flag it — your note
-> goes to your teacher alongside the finding.
+> Here's the text transcript Viva captured. It links captured fragments to the
+> question and passage used as evidence. If Viva misunderstood an answer or
+> missed something important, flag it — your note goes to your teacher
+> alongside the finding. Viva does not retain audio, so it cannot recover words
+> that speech recognition never captured.
 > [each finding: 🚩 "This doesn't reflect what I meant" + note field]
 
 ## Screen 5b — Teacher dossier
@@ -129,6 +134,13 @@ The passage highlight moving in sync with each question IS the
 **Assess-hiccup (a turn fails to process):**
 > (one answer couldn't be processed — the recording is safe and the defense
 > continues)
+
+**Transcript fidelity (student consent + review):**
+> Viva stores a consented text transcript of captured speech-recognition
+> fragments, not an audio recording. It groups those fragments with the
+> relevant question and submission passage for evidence. If speech recognition
+> never captured a word, Viva cannot recover it later without retained audio;
+> flag the misunderstanding for your teacher instead.
 
 **Demo banner:** Demo — replaying a sample defense. No microphone used.
 

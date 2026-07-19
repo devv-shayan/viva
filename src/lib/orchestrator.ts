@@ -11,12 +11,12 @@ export const MAX_DEFENSE_QUESTIONS = 6;
 export type NextFocus = Focus | "wrap";
 
 function wasAsked(entry: CoverageEntry) {
-  return entry.questionTurnIds.length > 0;
+  return entry.answerGroups.length > 0;
 }
 
 function questionCount(coverage: CoverageEntry[]) {
   return coverage.reduce(
-    (total, entry) => total + entry.questionTurnIds.length,
+    (total, entry) => total + entry.answerGroups.length,
     0,
   );
 }

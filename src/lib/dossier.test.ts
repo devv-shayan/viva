@@ -115,36 +115,65 @@ const request: DossierRequest = DossierRequestSchema.parse({
     {
       claimId: "thesis",
       status: "demonstrated",
-      questionTurnIds: ["t1"],
-      answerTurnIds: ["t2"],
+      answerGroups: [
+        {
+          id: "thesis-opening-answer",
+          questionTurnId: "t1",
+          answerTurnIds: ["t2"],
+        },
+      ],
       movesUsed: ["grounded_question"],
     },
     {
       claimId: "c1",
       status: "demonstrated",
-      questionTurnIds: ["t3", "t5"],
-      answerTurnIds: ["t4", "t6"],
+      answerGroups: [
+        {
+          id: "c1-initial-answer",
+          questionTurnId: "t3",
+          answerTurnIds: ["t4"],
+        },
+        {
+          id: "c1-drill-down-answer",
+          questionTurnId: "t5",
+          answerTurnIds: ["t6"],
+        },
+      ],
       movesUsed: ["grounded_question", "drill_down"],
     },
     {
       claimId: "c2",
       status: "demonstrated",
-      questionTurnIds: ["t7", "t9"],
-      answerTurnIds: ["t8", "t10"],
+      answerGroups: [
+        {
+          id: "c2-initial-answer",
+          questionTurnId: "t7",
+          answerTurnIds: ["t8"],
+        },
+        {
+          id: "c2-counterfactual-answer",
+          questionTurnId: "t9",
+          answerTurnIds: ["t10"],
+        },
+      ],
       movesUsed: ["grounded_question", "counterfactual"],
     },
     {
       claimId: "c3",
       status: "partial",
-      questionTurnIds: ["t11"],
-      answerTurnIds: ["t12"],
+      answerGroups: [
+        {
+          id: "c3-grounded-answer",
+          questionTurnId: "t11",
+          answerTurnIds: ["t12"],
+        },
+      ],
       movesUsed: ["grounded_question"],
     },
     {
       claimId: "c4",
       status: "untested",
-      questionTurnIds: [],
-      answerTurnIds: [],
+      answerGroups: [],
       movesUsed: [],
     },
   ],
@@ -152,7 +181,7 @@ const request: DossierRequest = DossierRequestSchema.parse({
   assessmentLedger: [
     {
       claimId: "c1",
-      answerTurnIds: ["t6"],
+      answerGroupId: "c1-drill-down-answer",
       quality: "demonstrated",
       evidenceCited: true,
       note: "Named the London figure and connected it to peak-time congestion.",
@@ -160,14 +189,14 @@ const request: DossierRequest = DossierRequestSchema.parse({
     },
     {
       claimId: "c2",
-      answerTurnIds: ["t10"],
+      answerGroupId: "c2-counterfactual-answer",
       quality: "demonstrated",
       evidenceCited: true,
       note: "Explained that the equity case depends on revenue reinvestment.",
     },
     {
       claimId: "c3",
-      answerTurnIds: ["t12"],
+      answerGroupId: "c3-grounded-answer",
       quality: "partial",
       evidenceCited: false,
       note: "Identified the unestimated enforcement-cost assumption.",
@@ -182,8 +211,7 @@ const validDraft: DossierModelOutput = DossierModelOutputSchema.parse({
     {
       rubricId: "r1",
       claimId: "c1",
-      questionTurnId: "t5",
-      answerTurnIds: ["t6"],
+      answerGroupId: "c1-drill-down-answer",
       passage: { paragraphId: "p2", quote: "London traffic fell by 15 percent" },
       status: "demonstrated",
       observation: "After a follow-up, the student named the 15 percent London traffic reduction and connected it to peak-time congestion.",
@@ -191,8 +219,7 @@ const validDraft: DossierModelOutput = DossierModelOutputSchema.parse({
     {
       rubricId: "r2",
       claimId: "c2",
-      questionTurnId: "t9",
-      answerTurnIds: ["t10"],
+      answerGroupId: "c2-counterfactual-answer",
       passage: { paragraphId: "p3", quote: "Reinvested revenue can protect low-income commuters" },
       status: "demonstrated",
       observation: "The student explained that the equity argument depends on reinvesting revenue in buses.",
@@ -200,8 +227,7 @@ const validDraft: DossierModelOutput = DossierModelOutputSchema.parse({
     {
       rubricId: "r3",
       claimId: "c3",
-      questionTurnId: "t11",
-      answerTurnIds: ["t12"],
+      answerGroupId: "c3-grounded-answer",
       passage: { paragraphId: "p4", quote: "Safe City cameras make enforcement cheap" },
       status: "needs_review",
       observation: "The student identified that integration and billing costs were not estimated, while explaining the assumption behind camera reuse.",
@@ -230,8 +256,7 @@ describe("Viva dossier validation", () => {
     earlyRequest.coverage = earlyRequest.coverage.map((entry) => ({
       ...entry,
       status: "untested",
-      questionTurnIds: [],
-      answerTurnIds: [],
+      answerGroups: [],
       movesUsed: [],
     }));
     earlyRequest.assessmentLedger = [];
@@ -345,25 +370,20 @@ describe("Viva dossier validation", () => {
     }
   });
 
-  it("rejects citation links that are unknown, out of order, wrong for a claim, or not approved passage text", () => {
+  it("rejects citation links with an unknown answer group, wrong passage text, or dishonest status", () => {
     const candidate = finalizeDossier(structuredClone(validDraft), request);
-    candidate.findings[0].questionTurnId = "missing-turn";
-    candidate.findings[0].answerTurnIds = ["t4"];
+    candidate.findings[0].answerGroupId = "missing-answer-group";
     candidate.findings[1].passage = { paragraphId: "p3", quote: "protect low-income commuters" };
     candidate.findings[2].status = "partially_demonstrated";
 
     const issues = getDossierValidationIssues(candidate, request);
 
-    expect(issues.join("\n")).toContain("agent question turns");
-    expect(issues.join("\n")).toContain("answers after its question");
+    expect(issues.join("\n")).toContain("complete answered group");
     expect(issues.join("\n")).toContain("approved claim passage exactly");
     expect(issues.join("\n")).toContain("status must be needs_review");
   });
 
-  it("rejects duplicate, wrong-speaker, wrong-rubric, and dishonest coverage links", () => {
-    const wrongSpeaker = finalizeDossier(structuredClone(validDraft), request);
-    wrongSpeaker.findings[0].answerTurnIds = ["t5"];
-
+  it("rejects duplicate findings, wrong rubric IDs, and dishonest coverage links", () => {
     const wrongRubric = finalizeDossier(structuredClone(validDraft), request);
     wrongRubric.findings[0].rubricId = "r3";
 
@@ -373,9 +393,6 @@ describe("Viva dossier validation", () => {
     const dishonestNotTested = finalizeDossier(structuredClone(validDraft), request);
     dishonestNotTested.notTested = ["c3"];
 
-    expect(getDossierValidationIssues(wrongSpeaker, request).join("\n")).toContain(
-      "student answer turns",
-    );
     expect(getDossierValidationIssues(wrongRubric, request).join("\n")).toContain(
       "approved rubric IDs",
     );
@@ -392,10 +409,94 @@ describe("Viva dossier validation", () => {
     duplicateTurn.transcript.turns[1].id = duplicateTurn.transcript.turns[0].id;
 
     const agentAnswer = structuredClone(request);
-    agentAnswer.coverage[0].answerTurnIds = ["t1"];
+    agentAnswer.coverage[0].answerGroups[0].answerTurnIds = ["t1"];
 
     expect(DossierRequestSchema.safeParse(duplicateTurn).success).toBe(false);
     expect(DossierRequestSchema.safeParse(agentAnswer).success).toBe(false);
+  });
+
+  it("requires the complete captured answer group instead of only a final speech fragment", () => {
+    const groupedRequest = structuredClone(request);
+    groupedRequest.transcript.turns.push({
+      id: "t4-continuation",
+      speaker: "student",
+      t: 58_000,
+      text: "Everything is cool. That's why I mentioned that.",
+    });
+
+    const c1Coverage = groupedRequest.coverage.find(
+      (entry) => entry.claimId === "c1",
+    );
+
+    if (!c1Coverage) {
+      throw new Error("The fixture needs c1 coverage.");
+    }
+
+    // A pause may split one spoken answer into two final ASR events. Both
+    // fragments are owned by the question until Viva speaks again.
+    c1Coverage.answerGroups = [
+      {
+        id: "c1-complete-spoken-answer",
+        questionTurnId: "t3",
+        answerTurnIds: ["t4", "t4-continuation"],
+      },
+    ];
+    groupedRequest.assessmentLedger = groupedRequest.assessmentLedger.map(
+      (record) =>
+        record.claimId === "c1"
+          ? { ...record, answerGroupId: "c1-complete-spoken-answer" }
+          : record,
+    );
+
+    const parsedRequest = DossierRequestSchema.parse(groupedRequest);
+    const completeGroupDraft = structuredClone(validDraft);
+    const c1Finding = completeGroupDraft.findings.find(
+      (finding) => finding.claimId === "c1",
+    );
+
+    if (!c1Finding) {
+      throw new Error("The fixture needs a c1 dossier finding.");
+    }
+
+    c1Finding.answerGroupId = "c1-complete-spoken-answer";
+    expect(
+      getDossierValidationIssues(
+        finalizeDossier(completeGroupDraft, parsedRequest),
+        parsedRequest,
+      ),
+    ).toEqual([]);
+
+    const finalFragmentOnly = structuredClone(completeGroupDraft);
+    const finalFragmentFinding = finalFragmentOnly.findings.find(
+      (finding) => finding.claimId === "c1",
+    );
+
+    if (!finalFragmentFinding) {
+      throw new Error("The fixture needs a c1 dossier finding.");
+    }
+
+    // There is no finding-level answerTurnIds escape hatch. A made-up group
+    // pointing at only the final fragment cannot pass the server validation.
+    finalFragmentFinding.answerGroupId = "c1-final-fragment-only";
+    expect(
+      getDossierValidationIssues(
+        finalizeDossier(finalFragmentOnly, parsedRequest),
+        parsedRequest,
+      ).join("\n"),
+    ).toContain("complete answered group");
+
+    const legacyFragmentCitation = {
+      ...completeGroupDraft,
+      findings: completeGroupDraft.findings.map((finding) =>
+        finding.claimId === "c1"
+          ? { ...finding, answerTurnIds: ["t4-continuation"] }
+          : finding,
+      ),
+    };
+
+    expect(DossierModelOutputSchema.safeParse(legacyFragmentCitation).success).toBe(
+      false,
+    );
   });
 
   it("makes the content-only and no-verdict contract explicit for dossier generation", () => {

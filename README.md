@@ -16,9 +16,11 @@ Viva does **not** detect AI use, determine authorship, assign grades, or make ac
 
 1. A teacher pastes an essay and chooses discussion objectives.
 2. Viva creates a document-grounded argument map with passages and weak spots.
-3. The student gives informed consent before the recorded defense begins.
+3. The student gives informed consent before Viva stores a text transcript of
+   the captured defense fragments.
 4. Viva asks focused follow-up and counterfactual questions while showing the relevant passage.
-5. The student reviews the transcript and can add a clarification.
+5. The student reviews the transcript and can flag a misunderstanding or
+   missing context for their teacher.
 6. The teacher receives a citation-safe dossier linking each finding to the rubric objective, essay passage, question, and answer.
 
 ## Try the demo
@@ -70,7 +72,8 @@ npm run build
 - OpenAI Responses API for essay analysis, answer assessment, and dossier generation
 - OpenAI Realtime Agents SDK for the live voice defense
 - Zod for structured-output and evidence validation
-- Browser-local session storage for the consented conversation record
+- A consented text transcript and evidence record; Viva does not retain an
+  audio recording of the defense
 
 ## Trust and fairness by design
 
@@ -79,9 +82,25 @@ npm run build
 - Content-only assessment: never accent, fluency, hesitation, confidence, or language choice
 - Multilingual answers supported without treating language as a quality signal
 - Student transcript review and clarification rights
+- Captured transcript fragments are linked to the relevant question and essay
+  passage for the evidence record
+- No retained audio: if speech recognition did not capture a word, Viva cannot
+  recover it later; students can flag the misunderstanding for their teacher
 - Teacher-controlled findings: approve, dismiss, or annotate
 - Server validation rejects unsupported citations and verdict language
 - The teacher, not Viva, makes decisions
+
+### Transcript fidelity
+
+Viva stores the consented **text transcript** produced from captured final
+speech-recognition fragments. It groups those fragments with the relevant
+question and submission passage so the teacher can inspect the evidence behind
+a finding. It does not keep an audio recording of the defense.
+
+Speech recognition can miss or mishear words. If a word was never captured in
+the text transcript, Viva cannot restore it later without retaining audio,
+which it deliberately does not do. The student can flag a misunderstanding or
+missing context for their teacher before the record is used in review.
 
 ## How Codex and GPT-5.6 were used
 

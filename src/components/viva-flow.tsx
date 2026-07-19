@@ -90,6 +90,7 @@ vivaId,
     clearSession,
     completeDefense,
     completeStudentReview,
+    flushAssignedSession,
     getDossierRequest,
     hydrated,
     saveDossier,
@@ -119,14 +120,12 @@ vivaId,
   async function finishAssignedReview() {
     const reviewedSession = completeStudentReview();
     if (!reviewedSession) return;
-    if (vivaId) {
-      await fetch(`/api/vivas/${vivaId}/session`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session: reviewedSession }) });
-    }
     if (!vivaId) {
       window.location.assign("/teacher");
       return;
     }
     try {
+      await flushAssignedSession();
       await updateAssignedVivaStatus("completed");
       router.push("/my-vivas");
     } catch (error) {
@@ -160,9 +159,7 @@ vivaId,
       }
 
       const dossierSession = saveDossier(payload);
-      if (vivaId && dossierSession) {
-        await fetch(`/api/vivas/${vivaId}/session`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session: dossierSession }) });
-      }
+      if (vivaId && dossierSession) await flushAssignedSession();
     } catch (error) {
       setDossierError(
         error instanceof Error

@@ -53,9 +53,14 @@ type ClaimStatus = "untested" | "asked" | "partial" | "demonstrated" | "needs_re
 type CoverageEntry = {
   claimId: string;
   status: ClaimStatus;
-  questionTurnIds: string[];
-  answerTurnIds: string[];
+  answerGroups: AnswerGroup[];
   movesUsed: MoveType[];      // what's been tried on this claim
+};
+
+type AnswerGroup = {
+  id: string;                 // derived from the stable Viva question turn id
+  questionTurnId: string;     // one agent turn
+  answerTurnIds: string[];    // every final student fragment before Viva's next response
 };
 
 type MoveType = "grounded_question" | "drill_down" | "counterfactual" | "wrap";
@@ -85,7 +90,7 @@ type Focus = {                // orchestrator's directive to the voice agent
 
 ```ts
 // request
-{ answerTurns: Turn[],        // the student's latest answer (may span turns)
+{ answerTurns: Turn[],        // one complete answer group (may span final ASR turns)
   focus: Focus,               // what was asked and why
   graph: ArgumentGraph,
   recentTurns: Turn[] }       // last ~6 for context
@@ -115,14 +120,19 @@ type Transcript = {
 };
 ```
 
+An `AnswerGroup` remains open while an assessment is being prepared. It closes
+only when Viva's next audio buffer starts—not when a FOCUS is queued or a
+server response is created—so a late final transcription event remains
+attached to the answer it followed.
+
 ## 6. Dossier (`POST /api/dossier` — GPT-5.6 Terra, hard-validated)
 
 ```ts
 type Finding = {
   rubricId: string;
   claimId: string;
-  questionTurnId: string;     // must exist in transcript — HARD
-  answerTurnIds: string[];    // ≥1, must exist — HARD
+  answerGroupId: string;      // server-owned group ID — HARD; resolves to the
+                               // exact question and every captured answer fragment
   passage: PassageRef;        // must quote-match submission — HARD
   status: "demonstrated" | "partially_demonstrated" | "not_demonstrated" | "needs_review";
   observation: string;        // factual, quotes the student where useful.
@@ -143,7 +153,8 @@ type Dossier = {
 ```
 
 Server-side validation: reject + regenerate
-(max 2 retries) on: missing/unknown turn ids, passage quote not found in
+(max 2 retries) on: missing/unknown group ids, incomplete/mismatched answer
+groups, passage quote not found in
 submission, verdict vocabulary (regex list: "cheat", "AI-generated",
 "plagiar", "authorship", "%", "grade") in observation/summary.
 
@@ -163,5 +174,6 @@ type SessionState = {
 
 ## Fixture
 `fixtures/sample-essay.md` (the congestion-pricing essay) +
-`fixtures/demo-defense.json` (Transcript of the scripted defense) — replayed
-through the REAL /api/assess + orchestrator in demo mode and in vitest.
+`fixtures/demo-defense.json` (a transcript plus complete answer groups of the
+scripted defense) — replayed through the REAL /api/assess + orchestrator in
+demo mode and in vitest.

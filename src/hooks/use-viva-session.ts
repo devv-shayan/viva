@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   VIVA_SESSION_STORAGE_KEY,
-  VivaSessionSchema,
   activatePendingFocus,
   applyAssessDelta,
   appendRealtimeResponseDiagnostic,
@@ -14,6 +13,7 @@ import {
   finishDefense,
   completeStudentReview as persistStudentReviewCompletion,
   parseVivaSession,
+  parsePersistedVivaSession,
   queueFocus,
   saveDossier as persistDossier,
   saveStudentChallenge as persistStudentChallenge,
@@ -23,11 +23,16 @@ import {
   type DefenseDraft,
   type Focus,
   type RealtimeResponseDiagnostic,
+  type TranscriptAppendOptions,
   type TranscriptTurn,
   type VivaSessionState,
 } from "@/lib/session-state";
 import type { AssessDelta } from "@/lib/assess-types";
 import type { Dossier, TeacherAction } from "@/lib/dossier-types";
+import {
+  createSessionSaveQueue,
+  type SessionSaveQueue,
+} from "@/lib/session-save-queue";
 
 type SessionUpdater = (
   session: VivaSessionState | null,
@@ -42,13 +47,48 @@ export function useVivaSession(vivaId?: string) {
   const [session, setSession] = useState<VivaSessionState | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const sessionRef = useRef<VivaSessionState | null>(null);
+  const assignedSaveQueueRef = useRef<
+    SessionSaveQueue<VivaSessionState> | null
+  >(null);
+  const assignedSaveQueueVivaIdRef = useRef<string | undefined>(undefined);
+  const skipHydratedAssignedSessionRef = useRef<VivaSessionState | null>(null);
+
+  const getAssignedSaveQueue = useCallback(() => {
+    if (!vivaId) return null;
+
+    if (assignedSaveQueueVivaIdRef.current !== vivaId) {
+      assignedSaveQueueVivaIdRef.current = vivaId;
+      assignedSaveQueueRef.current = createSessionSaveQueue(
+        async (nextSession) => {
+          const response = await fetch(`/api/vivas/${vivaId}/session`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ session: nextSession }),
+          });
+
+          if (!response.ok) {
+            throw new Error("Viva could not save the conversation record.");
+          }
+        },
+        (error) => {
+          console.error("Viva could not save the assigned session.", error);
+        },
+      );
+    }
+
+    return assignedSaveQueueRef.current;
+  }, [vivaId]);
 
   useEffect(() => {
     if (vivaId) {
+      skipHydratedAssignedSessionRef.current = null;
       void fetch(`/api/vivas/${vivaId}/session`).then(async (response) => {
         const payload = (await response.json()) as { session?: VivaSessionState | null };
-        const restored = response.ok && payload.session ? VivaSessionSchema.parse(payload.session) : null;
+        const restored = response.ok && payload.session
+          ? parsePersistedVivaSession(payload.session)
+          : null;
         sessionRef.current = restored;
+        skipHydratedAssignedSessionRef.current = restored;
         setSession(restored);
         setHydrated(true);
       });
@@ -63,18 +103,35 @@ export function useVivaSession(vivaId?: string) {
   useEffect(() => {
     if (!hydrated) return;
     if (vivaId) {
-      if (session) void fetch(`/api/vivas/${vivaId}/session`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session }) });
+      if (session === skipHydratedAssignedSessionRef.current) {
+        skipHydratedAssignedSessionRef.current = null;
+        return;
+      }
+
+      if (session) getAssignedSaveQueue()?.schedule(session);
       return;
     }
     if (!session) window.localStorage.removeItem(VIVA_SESSION_STORAGE_KEY);
     else window.localStorage.setItem(VIVA_SESSION_STORAGE_KEY, serializeVivaSession(session));
-  }, [hydrated, session, vivaId]);
+  }, [getAssignedSaveQueue, hydrated, session, vivaId]);
   const commit = useCallback((updater: SessionUpdater) => {
     const next = updater(sessionRef.current);
     sessionRef.current = next;
     setSession(next);
     return next;
   }, []);
+
+  const flushAssignedSession = useCallback(async () => {
+    if (!vivaId) return;
+
+    const current = sessionRef.current;
+    if (!current) return;
+
+    const queue = getAssignedSaveQueue();
+    if (!queue) return;
+    queue.schedule(current);
+    await queue.flush();
+  }, [getAssignedSaveQueue, vivaId]);
 
   const startDefense = useCallback(
     (draft: DefenseDraft) => commit(() => createDefenseSession(draft)),
@@ -96,9 +153,9 @@ export function useVivaSession(vivaId?: string) {
   );
 
   const appendTurn = useCallback(
-    (turn: TranscriptTurn) =>
+    (turn: TranscriptTurn, options: TranscriptAppendOptions = {}) =>
       commit((current) =>
-        current ? appendTranscriptTurn(current, turn) : current,
+        current ? appendTranscriptTurn(current, turn, options) : current,
       ),
     [commit],
   );
@@ -112,9 +169,9 @@ export function useVivaSession(vivaId?: string) {
   );
 
   const applyAssessment = useCallback(
-    (delta: AssessDelta, answerTurnIds: string[] = []) =>
+    (delta: AssessDelta, answerGroupId?: string) =>
       commit((current) =>
-        current ? applyAssessDelta(current, delta, answerTurnIds) : current,
+        current ? applyAssessDelta(current, delta, answerGroupId) : current,
       ),
     [commit],
   );
@@ -137,7 +194,7 @@ export function useVivaSession(vivaId?: string) {
       current ? persistStudentReviewCompletion(current) : current,
     );
 
-    if (next) {
+    if (next && !vivaId) {
       window.localStorage.setItem(
         VIVA_SESSION_STORAGE_KEY,
         serializeVivaSession(next),
@@ -145,7 +202,7 @@ export function useVivaSession(vivaId?: string) {
     }
 
     return next;
-  }, [commit]);
+  }, [commit, vivaId]);
   const getDossierRequest = useCallback(() => {
     const current = sessionRef.current;
     return current?.phase === "student_review" && current.studentReviewCompletedAt
@@ -187,6 +244,7 @@ export function useVivaSession(vivaId?: string) {
     clearSession,
     completeDefense,
     completeStudentReview,
+    flushAssignedSession,
     hydrated,
     getDossierRequest,
     saveDossier,

@@ -4,7 +4,11 @@ import { analyzeSubmission } from "@/lib/analyze";
 import { createSubmission, type RubricObjective } from "@/lib/analysis-types";
 import { AuthError, getCurrentUser } from "@/lib/auth";
 import { queryAssignments } from "@/lib/cloudflare-assignments";
-import { createDefenseSession, VivaSessionSchema } from "@/lib/session-state";
+import {
+  createDefenseSession,
+  parsePersistedVivaSession,
+  VivaSessionSchema,
+} from "@/lib/session-state";
 
 const liveRubric: RubricObjective[] = [
   { id: "r1", text: "Explains the main claim using evidence from the assignment" },
@@ -34,7 +38,22 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
     if (!viva) return NextResponse.json({ error: "Viva not found." }, { status: 404 });
 
     if (viva.session_state) {
-      return NextResponse.json({ session: VivaSessionSchema.parse(JSON.parse(viva.session_state)) });
+      const session = parsePersistedVivaSession(JSON.parse(viva.session_state));
+
+      if (!session) {
+        throw new Error("The saved Viva session could not be read safely.");
+      }
+
+      const normalized = JSON.stringify(session);
+
+      if (normalized !== viva.session_state) {
+        await queryAssignments(
+          "UPDATE vivas SET session_state = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+          [normalized, id],
+        );
+      }
+
+      return NextResponse.json({ session });
     }
 
     if (user.role !== "student") {

@@ -30,7 +30,7 @@ Rules:
 - Evaluate the content and reasoning in the student's answers only. Never weigh accent, fluency, hesitation, filler words, confidence, speaking pace, or delivery.
 - Never claim or imply cheating, AI generation, plagiarism, authorship, probabilities of authorship, grades, scores, or a verdict.
 - Return only the requested structured fields: summary and findings. Do not return framingNote, notTested, teacher actions, teacher notes, or student challenges; those are server-owned or local-only.
-- For each expected finding, use exactly its approved claim ID, one approved rubric ID, an agent question ID, one or more student answer IDs that occurred after that question, and the exact approved passage object. Never invent or substitute IDs or passages.
+- For each expected finding, use exactly its approved claim ID, one approved rubric ID, one approved answerGroupId, and the exact approved passage object. An answerGroupId is server-owned: it stands for one Viva question and every captured student fragment in that answer. Never invent or substitute IDs or passages.
 - Match the provided expected status exactly. Describe what the student explained, identified, or left unestimated in factual language. A neutral mention that an answer mixed another language is allowed only when the assessment ledger records it; never treat language as a quality signal.
 - Keep the summary to two or three factual sentences, with no recommendation or decision for the instructor.`;
 
@@ -85,8 +85,9 @@ function buildExpectedFindingPlan(request: DossierRequest) {
     return {
       claimId,
       allowedRubricIds: claim.rubricIds,
-      allowedQuestionTurnIds: coverage.questionTurnIds,
-      allowedAnswerTurnIds: coverage.answerTurnIds,
+      allowedAnswerGroupIds: coverage.answerGroups
+        .filter((group) => group.answerTurnIds.length > 0)
+        .map((group) => group.id),
       passage: claim.passage,
       expectedStatus: getExpectedFindingStatus(claim, coverage.status),
     };

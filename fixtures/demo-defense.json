@@ -1,5 +1,5 @@
 {
-  "_note": "Placeholder fixture from design/demo-script.md — replace with the transcript of the real recorded run after Block 4. Shape = Transcript in design/schemas.md.",
+  "_note": "Scripted pre-recording fixture. The live demo replays these transcript turns through analysis, grouped assessment, and dossier generation. Replace it with the consented recording once the final demo run is complete.",
   "sessionId": "demo-areeba-001",
   "studentName": "Areeba Khan",
   "consent": { "given": true, "at": "2026-07-17T15:00:00+05:00", "spokenConfirmationTurnId": "t1" },
@@ -9,7 +9,8 @@
     { "id": "t3", "speaker": "agent", "t": 46000, "text": "In your second paragraph you cite London and Stockholm. Which result from those cities does the most work for your argument?" },
     { "id": "t4", "speaker": "student", "t": 54000, "text": "Um... basically that it worked? Traffic went down and people ended up supporting it. It shows pricing is effective." },
     { "id": "t5", "speaker": "agent", "t": 66000, "text": "You mention a specific figure from London in that paragraph — what was it, and why does that number matter for Karachi?" },
-    { "id": "t6", "speaker": "student", "t": 76000, "text": "Oh — the 15 percent drop in zone traffic after 2003. It matters because that's... matlab, pandra percent kam lagta hai lekin peak time mein woh jam khatam kar deta hai — the last 15 percent is what turns gridlock into moving traffic." },
+    { "id": "t6", "speaker": "student", "t": 76000, "text": "Oh — the 15 percent drop in zone traffic after 2003. It matters because that's... matlab, pandra percent kam lagta hai lekin peak time mein woh jam khatam kar deta hai." },
+    { "id": "t6b", "speaker": "student", "t": 83500, "text": "The last 15 percent is what turns gridlock into moving traffic." },
     { "id": "t7", "speaker": "agent", "t": 98000, "text": "Thank you — that's exactly the mechanism. Let me turn to the equity point. In paragraph three you say the concern that pricing 'falls hardest on low-income commuters' is overstated for Karachi. Walk me through how you reached that." },
     { "id": "t8", "speaker": "student", "t": 112000, "text": "Most people driving cars into the center at peak hours are higher-income — lower-income commuters are mostly already on buses and bikes. So if you exempt motorcycles and put the fee money into the bus lines, they gain more than they pay. Honestly I didn't find a Karachi traffic survey to cite, that composition point is from general reporting." },
     { "id": "t9", "speaker": "agent", "t": 138000, "text": "That's a fair account of where it stands. Here's a what-if: suppose the transit reinvestment never happens — the fee gets charged but the bus money is diverted. Does your equity argument still hold?" },
@@ -18,5 +19,13 @@
     { "id": "t12", "speaker": "student", "t": 188000, "text": "That one's more of an inference, honestly. The cameras exist and other cities' compliance was high once cameras were visible. I didn't estimate the actual integration or billing costs — I assumed reuse would be cheap." },
     { "id": "t13", "speaker": "agent", "t": 212000, "text": "Thank you, Areeba — you clearly know where your argument is strong and where it leans on assumptions, and that's what this is for. You'll see the transcript now and can flag anything you think I got wrong. Your teacher makes any decisions from here." },
     { "id": "t14", "speaker": "student", "t": 226000, "text": "Okay — that was less scary than I thought." }
+  ],
+  "answerGroups": [
+    { "id": "answer-group:t1", "questionTurnId": "t1", "answerTurnIds": ["t2"] },
+    { "id": "answer-group:t3", "questionTurnId": "t3", "answerTurnIds": ["t4"] },
+    { "id": "answer-group:t5", "questionTurnId": "t5", "answerTurnIds": ["t6", "t6b"] },
+    { "id": "answer-group:t7", "questionTurnId": "t7", "answerTurnIds": ["t8"] },
+    { "id": "answer-group:t9", "questionTurnId": "t9", "answerTurnIds": ["t10"] },
+    { "id": "answer-group:t11", "questionTurnId": "t11", "answerTurnIds": ["t12"] }
   ]
 }

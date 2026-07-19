@@ -25,7 +25,7 @@ export function ConsentScreen({ draft, onBack, onBegin }: ConsentScreenProps) {
             audience="Student workspace"
             className="mb-5"
             description="This is a conversation about the ideas in your essay. You do not need to sound perfect to take part."
-            tip="Read what will be recorded, then choose whether to begin. You can pause and review the record later."
+            tip="Read what text record will be saved, then choose whether to begin. You can pause and review it later."
             title="Your voice matters here."
           />
           <section className="w-full rounded-[1.5rem] border border-[#e7e3d8] bg-[#ffffff] p-6 shadow-[0_18px_50px_rgba(70,55,30,0.07)] sm:p-10">
@@ -42,8 +42,9 @@ export function ConsentScreen({ draft, onBack, onBegin }: ConsentScreenProps) {
               <li className="flex gap-3">
                 <Check className="mt-1 size-4 shrink-0 text-[#171717]" />
                 <span>
-                  We will keep a record of the conversation. Your teacher can
-                  see the transcript and a summary.
+                  Viva saves a text transcript of captured speech-recognition
+                  fragments. Your teacher can see that transcript and a
+                  summary; Viva does not retain an audio recording.
                 </span>
               </li>
               <li className="flex gap-3">
@@ -59,8 +60,9 @@ export function ConsentScreen({ draft, onBack, onBegin }: ConsentScreenProps) {
               <li className="flex gap-3">
                 <Check className="mt-1 size-4 shrink-0 text-[#171717]" />
                 <span>
-                  {TRUST_PROMISES.pauseIsFree} You can read the transcript and
-                  leave a note before your teacher sees the final summary.
+                  {TRUST_PROMISES.pauseIsFree} You can read the text transcript
+                  and flag a misunderstanding before your teacher sees the
+                  final summary.
                 </span>
               </li>
             </ul>
@@ -81,8 +83,8 @@ export function ConsentScreen({ draft, onBack, onBegin }: ConsentScreenProps) {
               type="checkbox"
             />
             <span>
-              I understand what will be recorded and that I can pause or review
-              the conversation record.
+              I understand that Viva saves a text transcript, not audio, and
+              that I can pause or review the conversation record.
             </span>
           </label>
 

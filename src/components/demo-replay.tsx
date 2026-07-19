@@ -21,6 +21,7 @@ import { requestAssessment } from "@/lib/assess-client";
 import type { ArgumentGraph, Submission } from "@/lib/analysis-types";
 import type { Dossier, TeacherAction } from "@/lib/dossier-types";
 import { nextFocus } from "@/lib/orchestrator";
+import { DemoDefenseFixtureSchema } from "@/lib/demo-defense-fixture";
 import { sampleRubric } from "@/lib/sample-submission";
 import {
   activatePendingFocus,
@@ -46,7 +47,13 @@ type AnalyzeResponse = {
 };
 
 const REPLAY_INTERVAL_MS = 700;
-const DEMO_TURNS = demoDefense.turns as TranscriptTurn[];
+const DEMO_DEFENSE = DemoDefenseFixtureSchema.parse(demoDefense);
+const DEMO_TURNS = DEMO_DEFENSE.turns as TranscriptTurn[];
+const DEMO_GROUP_BY_ANSWER_TURN = new Map(
+  DEMO_DEFENSE.answerGroups.flatMap((group) =>
+    group.answerTurnIds.map((turnId) => [turnId, group] as const),
+  ),
+);
 
 function timeAt(milliseconds: number) {
   const seconds = Math.max(0, Math.floor(milliseconds / 1000));
@@ -106,7 +113,7 @@ export function DemoReplay({ sampleEssay }: { sampleEssay: string }) {
     try {
       const analysisResponse = await fetch("/api/analyze", {
         body: JSON.stringify({
-          studentName: demoDefense.studentName,
+          studentName: DEMO_DEFENSE.studentName,
           title: "Should Karachi Adopt Congestion Pricing?",
           text: sampleEssay,
           rubric: sampleRubric,
@@ -130,8 +137,8 @@ export function DemoReplay({ sampleEssay }: { sampleEssay: string }) {
       };
       let current = updateSession(
         createDefenseSession(draft, {
-          consentAt: demoDefense.consent.at,
-          sessionId: `${demoDefense.sessionId}-live`,
+          consentAt: DEMO_DEFENSE.consent.at,
+          sessionId: `${DEMO_DEFENSE.sessionId}-live`,
         }),
         generation,
       );
@@ -148,10 +155,34 @@ export function DemoReplay({ sampleEssay }: { sampleEssay: string }) {
           current = updateSession(activatePendingFocus(current), generation);
         }
 
-        current = updateSession(appendTranscriptTurn(current, turn), generation);
+        const answerGroup =
+          turn.speaker === "student"
+            ? DEMO_GROUP_BY_ANSWER_TURN.get(turn.id)
+            : undefined;
+        const focusBeforeTurn = current.activeFocus;
+        current = updateSession(
+          appendTranscriptTurn(
+            current,
+            turn,
+            answerGroup && focusBeforeTurn
+              ? {
+                  answerGroupClaimId: focusBeforeTurn.claimId,
+                  answerGroupId: answerGroup.id,
+                }
+              : undefined,
+          ),
+          generation,
+        );
         setVisibleTurns(index + 1);
 
         if (turn.speaker !== "student") {
+          continue;
+        }
+
+        if (
+          !answerGroup ||
+          answerGroup.answerTurnIds.at(-1) !== turn.id
+        ) {
           continue;
         }
 
@@ -166,9 +197,21 @@ export function DemoReplay({ sampleEssay }: { sampleEssay: string }) {
           throw new Error("The sample replay lost its active discussion focus.");
         }
 
+        const turnsById = new Map(
+          current.transcript.turns.map((item) => [item.id, item]),
+        );
+        const answerTurns = answerGroup.answerTurnIds.flatMap((turnId) => {
+          const answer = turnsById.get(turnId);
+          return answer?.speaker === "student" ? [answer] : [];
+        });
+
+        if (answerTurns.length !== answerGroup.answerTurnIds.length) {
+          throw new Error("The demo answer group lost a recorded transcript fragment.");
+        }
+
         const { delta } = await requestAssessment(
           {
-            answerTurns: [turn],
+            answerTurns,
             focus,
             graph: current.graph,
             recentTurns: current.transcript.turns.slice(-6),
@@ -180,7 +223,10 @@ export function DemoReplay({ sampleEssay }: { sampleEssay: string }) {
           return;
         }
 
-        current = updateSession(applyAssessDelta(current, delta, [turn.id]), generation);
+        current = updateSession(
+          applyAssessDelta(current, delta, answerGroup.id),
+          generation,
+        );
         const next = nextFocus(current.coverage, current.graph, turn.t);
         current = updateSession(
           next === "wrap"
@@ -322,7 +368,7 @@ export function DemoReplay({ sampleEssay }: { sampleEssay: string }) {
           <aside className="h-fit rounded-[1.5rem] border border-[#e7e3d8] bg-white p-5 shadow-[0_12px_28px_rgba(70,55,30,0.045)]">
             <p className="text-xs font-semibold tracking-[0.14em] text-[#746a5b] uppercase">Understanding map</p>
             <p className="mt-2 text-sm leading-6 text-[#655d52]">The coded policy updates this map after each live assessment.</p>
-            {coverage.length ? <ul className="mt-5 space-y-4">{coverage.map((entry) => { const claim = demoSession?.graph.claims.find((item) => item.id === entry.claimId); const isReached = entry.questionTurnIds.length > 0; return <li className="flex gap-3" key={entry.claimId}><span className={`mt-1.5 size-2.5 shrink-0 rounded-full ${!isReached ? "bg-[#d8d3c8]" : entry.status === "demonstrated" ? "bg-[#171717]" : "bg-[#e6bb28]"}`} /><div><p className="text-sm font-medium leading-5">{claim?.text ?? entry.claimId}</p><p className="mt-1 text-xs text-[#766d60]">{!isReached ? "Not reached yet" : entry.status === "demonstrated" ? "Explained with evidence" : "A point to revisit"}</p></div></li>; })}</ul> : <p className="mt-5 border-l-2 border-[#d8d3c8] pl-3 text-sm leading-6 text-[#655d52]">Start the replay to create the document-grounded map.</p>}
+            {coverage.length ? <ul className="mt-5 space-y-4">{coverage.map((entry) => { const claim = demoSession?.graph.claims.find((item) => item.id === entry.claimId); const isReached = entry.answerGroups.length > 0; return <li className="flex gap-3" key={entry.claimId}><span className={`mt-1.5 size-2.5 shrink-0 rounded-full ${!isReached ? "bg-[#d8d3c8]" : entry.status === "demonstrated" ? "bg-[#171717]" : "bg-[#e6bb28]"}`} /><div><p className="text-sm font-medium leading-5">{claim?.text ?? entry.claimId}</p><p className="mt-1 text-xs text-[#766d60]">{!isReached ? "Not reached yet" : entry.status === "demonstrated" ? "Explained with evidence" : "A point to revisit"}</p></div></li>; })}</ul> : <p className="mt-5 border-l-2 border-[#d8d3c8] pl-3 text-sm leading-6 text-[#655d52]">Start the replay to create the document-grounded map.</p>}
             {stage === "generating" ? <p className="mt-6 flex gap-2 border-l-2 border-[#171717] bg-[#fff8dc] px-3 py-3 text-sm leading-6 text-[#5f5018]"><CheckCircle2 className="mt-0.5 size-4 shrink-0" />The consented record is complete. Viva is linking the report to its evidence.</p> : null}
           </aside>
         </section>

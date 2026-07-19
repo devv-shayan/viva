@@ -8,6 +8,7 @@ import type {
 import {
   activatePendingFocus,
   applyAssessDelta,
+  answerGroupIdForQuestionTurn,
   appendRealtimeResponseDiagnostic,
   appendTranscriptTurn,
   createDossierRequest,
@@ -25,7 +26,7 @@ import {
   serializeVivaSession,
   shouldResumeDefense,
 } from "./session-state";
-import type { Dossier } from "./dossier-types";
+import { DOSSIER_FRAMING_NOTE, type Dossier } from "./dossier-types";
 
 const rubric: RubricObjective[] = [
   { id: "r1", text: "Explains evidence and trade-offs" },
@@ -157,8 +158,13 @@ describe("Viva defense session state", () => {
     expect(session.transcript.consent.spokenConfirmationTurnId).toBe("agent-1");
     expect(thesisCoverage).toMatchObject({
       status: "asked",
-      questionTurnIds: ["agent-1"],
-      answerTurnIds: ["student-1"],
+      answerGroups: [
+        {
+          id: answerGroupIdForQuestionTurn("agent-1"),
+          questionTurnId: "agent-1",
+          answerTurnIds: ["student-1"],
+        },
+      ],
       movesUsed: ["grounded_question"],
     });
   });
@@ -201,19 +207,41 @@ describe("Viva defense session state", () => {
   });
 
   it("updates coverage from content assessment only for the active approved focus", () => {
-    const active = activatePendingFocus(createSession());
-    const assessed = applyAssessDelta(active, {
-      claimId: "thesis",
-      quality: "vague",
-      evidenceCited: false,
-      note: "Relevant reasoning needs one concrete detail.",
+    let active = activatePendingFocus(createSession());
+    active = appendTranscriptTurn(active, {
+      id: "agent-1",
+      speaker: "agent",
+      text: "Explain the central claim.",
+      t: 1,
     });
-    const mismatched = applyAssessDelta(assessed, {
-      claimId: "c1",
-      quality: "demonstrated",
-      evidenceCited: true,
-      note: "Should not apply outside the active focus.",
+    active = appendTranscriptTurn(active, {
+      id: "student-1",
+      speaker: "student",
+      text: "Road space is limited.",
+      t: 2,
     });
+
+    const answerGroupId = answerGroupIdForQuestionTurn("agent-1");
+    const assessed = applyAssessDelta(
+      active,
+      {
+        claimId: "thesis",
+        quality: "vague",
+        evidenceCited: false,
+        note: "Relevant reasoning needs one concrete detail.",
+      },
+      answerGroupId,
+    );
+    const mismatched = applyAssessDelta(
+      assessed,
+      {
+        claimId: "c1",
+        quality: "demonstrated",
+        evidenceCited: true,
+        note: "Should not apply outside the active focus.",
+      },
+      answerGroupId,
+    );
 
     expect(assessed.coverage.find((entry) => entry.claimId === "thesis")?.status).toBe(
       "partial",
@@ -245,13 +273,13 @@ describe("Viva defense session state", () => {
         evidenceCited: false,
         note: "Explained the road-space reasoning but did not cite an example.",
       },
-      ["student-1"],
+      answerGroupIdForQuestionTurn("agent-1"),
     );
 
     expect(session.assessmentLedger).toEqual([
       {
         claimId: "thesis",
-        answerTurnIds: ["student-1"],
+        answerGroupId: answerGroupIdForQuestionTurn("agent-1"),
         quality: "partial",
         evidenceCited: false,
         note: "Explained the road-space reasoning but did not cite an example.",
@@ -260,6 +288,197 @@ describe("Viva defense session state", () => {
     expect(createDossierRequest(session).assessmentLedger).toEqual(
       session.assessmentLedger,
     );
+  });
+
+  it("keeps a paused multi-fragment answer in one group and assesses only that full group", () => {
+    let session = activatePendingFocus(createSession());
+
+    session = appendTranscriptTurn(session, {
+      id: "agent-cv",
+      speaker: "agent",
+      text: "What supports the experience you present in your CV?",
+      t: 1,
+    });
+
+    const answerGroupId = answerGroupIdForQuestionTurn("agent-cv");
+    const grouping = {
+      answerGroupClaimId: "thesis",
+      answerGroupId,
+    };
+
+    session = appendTranscriptTurn(
+      session,
+      {
+        id: "student-companies",
+        speaker: "student",
+        text: "I have worked with companies, which is why I added it to my CV.",
+        t: 5,
+      },
+      grouping,
+    );
+    session = appendTranscriptTurn(
+      session,
+      {
+        id: "student-cool",
+        speaker: "student",
+        text: "Everything is cool at the end.",
+        t: 7,
+      },
+      grouping,
+    );
+
+    const delta = {
+      claimId: "thesis",
+      quality: "partial" as const,
+      evidenceCited: false,
+      note: "The answer names prior work but does not connect it to the cited CV evidence.",
+    };
+    const rejectedFragment = applyAssessDelta(
+      session,
+      delta,
+      "student-cool",
+    );
+    const assessed = applyAssessDelta(session, delta, answerGroupId);
+
+    expect(
+      session.coverage.find((entry) => entry.claimId === "thesis")?.answerGroups,
+    ).toEqual([
+      {
+        id: answerGroupId,
+        questionTurnId: "agent-cv",
+        answerTurnIds: ["student-companies", "student-cool"],
+      },
+    ]);
+    expect(rejectedFragment).toEqual(session);
+    expect(assessed.assessmentLedger).toEqual([
+      expect.objectContaining({
+        claimId: "thesis",
+        answerGroupId,
+      }),
+    ]);
+  });
+
+  it("migrates a legacy partial citation to the complete captured answer group", () => {
+    const focus = createFocusForClaim(graph, "c1", "grounded_question")!;
+    let session = activatePendingFocus(queueFocus(createSession(), focus));
+
+    session = appendTranscriptTurn(session, {
+      id: "agent-legacy",
+      speaker: "agent",
+      text: "What supports the experience in your CV?",
+      t: 1,
+    });
+
+    const answerGroupId = answerGroupIdForQuestionTurn("agent-legacy");
+    const grouping = {
+      answerGroupClaimId: "c1",
+      answerGroupId,
+    };
+
+    session = appendTranscriptTurn(
+      session,
+      {
+        id: "student-companies-legacy",
+        speaker: "student",
+        text: "I have worked with companies, which is why I added it to my CV.",
+        t: 4,
+      },
+      grouping,
+    );
+    session = appendTranscriptTurn(
+      session,
+      {
+        id: "student-cool-legacy",
+        speaker: "student",
+        text: "Everything is cool at the end.",
+        t: 6,
+      },
+      grouping,
+    );
+    session = applyAssessDelta(
+      session,
+      {
+        claimId: "c1",
+        quality: "partial",
+        evidenceCited: false,
+        note: "Named work experience without linking it to the CV evidence.",
+      },
+      answerGroupId,
+    );
+    session = completeStudentReview(finishDefense(session));
+
+    const current = saveDossier(session, {
+      summary: "The student named prior work experience but did not connect it to the CV evidence.",
+      findings: [
+        {
+          rubricId: "r1",
+          claimId: "c1",
+          answerGroupId,
+          passage: graph.claims[0].passage,
+          status: "partially_demonstrated",
+          observation: "The answer named prior work experience without explaining how the cited CV line supports the claim.",
+        },
+      ],
+      notTested: ["c2", "c3"],
+      framingNote: DOSSIER_FRAMING_NOTE,
+    });
+
+    const legacy = {
+      ...current,
+      coverage: current.coverage.map(({ answerGroups, ...coverage }) => ({
+        ...coverage,
+        questionTurnIds: answerGroups.map((group) => group.questionTurnId),
+        answerTurnIds: answerGroups.flatMap((group) => group.answerTurnIds),
+      })),
+      assessmentLedger: current.assessmentLedger.map(
+        ({ answerGroupId: legacyGroupId, ...record }) => ({
+          ...record,
+          answerTurnIds:
+            current.coverage
+              .flatMap((entry) => entry.answerGroups)
+              .find((group) => group.id === legacyGroupId)?.answerTurnIds ?? [],
+        }),
+      ),
+      dossier: {
+        ...current.dossier!,
+        findings: current.dossier!.findings.map(
+          ({ answerGroupId: legacyGroupId, ...finding }) => {
+            const group = current.coverage
+              .flatMap((entry) => entry.answerGroups)
+              .find((entry) => entry.id === legacyGroupId)!;
+
+            return {
+              ...finding,
+              questionTurnId: group.questionTurnId,
+              // This reproduces the old, unfair shape that only cited the
+              // last ASR fragment of the student's complete answer.
+              answerTurnIds: [group.answerTurnIds.at(-1)!],
+            };
+          },
+        ),
+      },
+    };
+
+    const migrated = parseVivaSession(
+      JSON.stringify({
+        version: 1,
+        savedAt: "2026-07-19T12:00:00.000Z",
+        session: legacy,
+      }),
+    );
+
+    expect(migrated?.transcript.turns).toEqual(current.transcript.turns);
+    expect(
+      migrated?.coverage.find((entry) => entry.claimId === "c1")
+        ?.answerGroups,
+    ).toEqual([
+      {
+        id: answerGroupId,
+        questionTurnId: "agent-legacy",
+        answerTurnIds: ["student-companies-legacy", "student-cool-legacy"],
+      },
+    ]);
+    expect(migrated?.dossier?.findings[0]?.answerGroupId).toBe(answerGroupId);
   });
 
   it("keeps capped or failed Realtime replies in the local consent record", () => {
@@ -299,6 +518,7 @@ describe("Viva defense session state", () => {
 
   it("restores an already-consented record from before Realtime diagnostics existed", () => {
     const legacyEnvelope = JSON.parse(serializeVivaSession(createSession()));
+    legacyEnvelope.version = 1;
     delete legacyEnvelope.session.transcript.responseDiagnostics;
 
     expect(
@@ -362,7 +582,7 @@ describe("Viva defense session state", () => {
         evidenceCited: true,
         note: "Named the London traffic evidence.",
       },
-      ["student-c1"],
+      answerGroupIdForQuestionTurn("agent-c1"),
     );
 
     const dossier: Dossier = {
@@ -371,8 +591,7 @@ describe("Viva defense session state", () => {
         {
           rubricId: "r1",
           claimId: "c1",
-          questionTurnId: "agent-c1",
-          answerTurnIds: ["student-c1"],
+          answerGroupId: answerGroupIdForQuestionTurn("agent-c1"),
           passage: { paragraphId: "p2", quote: "London traffic fell" },
           status: "demonstrated",
           observation: "The student named the London traffic evidence.",
@@ -445,7 +664,7 @@ describe("Viva defense session state", () => {
         evidenceCited: true,
         note: "Named the London evidence.",
       },
-      ["student-c1"],
+      answerGroupIdForQuestionTurn("agent-c1"),
     );
 
     const saved = saveDossier(completeStudentReview(finishDefense(session)), {
@@ -454,8 +673,7 @@ describe("Viva defense session state", () => {
         {
           rubricId: "r1",
           claimId: "c1",
-          questionTurnId: "agent-c1",
-          answerTurnIds: ["student-c1"],
+          answerGroupId: answerGroupIdForQuestionTurn("agent-c1"),
           passage: { paragraphId: "p2", quote: "London traffic fell" },
           status: "demonstrated",
           observation: "The student named the London evidence.",
@@ -467,7 +685,7 @@ describe("Viva defense session state", () => {
     });
     const malformed = structuredClone(saved);
 
-    malformed.dossier!.findings[0].questionTurnId = "not-a-recorded-turn";
+    malformed.dossier!.findings[0].answerGroupId = "not-a-recorded-group";
 
     expect(parseVivaSession(serializeVivaSession(malformed))).toBeNull();
   });

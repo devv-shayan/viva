@@ -10,6 +10,7 @@ import {
   nextFocus,
 } from "./orchestrator";
 import {
+  answerGroupIdForQuestionTurn,
   applyAssessDeltaToCoverage,
   createCoverage,
   type CoverageEntry,
@@ -67,11 +68,20 @@ function recordQuestion(
   focus: Pick<Focus, "claimId" | "move">,
   turnNumber: number,
 ) {
+  const questionTurnId = `q-${turnNumber}`;
+
   return coverage.map((entry) =>
     entry.claimId === focus.claimId
       ? {
           ...entry,
-          questionTurnIds: [...entry.questionTurnIds, `q-${turnNumber}`],
+          answerGroups: [
+            ...entry.answerGroups,
+            {
+              id: answerGroupIdForQuestionTurn(questionTurnId),
+              questionTurnId,
+              answerTurnIds: [],
+            },
+          ],
           movesUsed: entry.movesUsed.includes(focus.move)
             ? entry.movesUsed
             : [...entry.movesUsed, focus.move],
@@ -176,8 +186,16 @@ describe("Viva focus orchestrator", () => {
     const coverage = createCoverage(graph).map((entry) => ({
       ...entry,
       claimId: entry.claimId,
-      questionTurnIds:
-        entry.claimId === "thesis" ? ["q-thesis"] : entry.questionTurnIds,
+      answerGroups:
+        entry.claimId === "thesis"
+          ? [
+              {
+                id: answerGroupIdForQuestionTurn("q-thesis"),
+                questionTurnId: "q-thesis",
+                answerTurnIds: [],
+              },
+            ]
+          : entry.answerGroups,
       status: entry.claimId === "thesis" ? "demonstrated" : entry.status,
       movesUsed:
         entry.claimId === "thesis"
@@ -193,9 +211,17 @@ describe("Viva focus orchestrator", () => {
 
     const questionLimited = coverage.map((entry, index) => ({
       ...entry,
-      questionTurnIds: Array.from(
+      answerGroups: Array.from(
         { length: index === 0 ? MAX_DEFENSE_QUESTIONS : 0 },
-        (_, item) => `q-${item}`,
+        (_, item) => {
+          const questionTurnId = `q-${item}`;
+
+          return {
+            id: answerGroupIdForQuestionTurn(questionTurnId),
+            questionTurnId,
+            answerTurnIds: [],
+          };
+        },
       ),
     }));
 

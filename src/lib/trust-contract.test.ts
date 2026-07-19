@@ -37,6 +37,8 @@ describe("student trust contract", () => {
     expect(consentScreenSource).toContain("TRUST_PROMISES.contentOnly");
     expect(consentScreenSource).toContain("TRUST_PROMISES.noVerdicts");
     expect(consentScreenSource).toContain("TRUST_PROMISES.pauseIsFree");
+    expect(consentScreenSource).toContain("text transcript");
+    expect(consentScreenSource).toContain("does not retain an audio recording");
     expect(defenseRoomSource).toContain("TRUST_PROMISES.pauseIsFree");
     expect(TRUST_PROMISES.contentOnly).toContain("confidence");
     expect(TRUST_PROMISES.noVerdicts).toContain("no grades or verdicts");

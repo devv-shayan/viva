@@ -55,7 +55,9 @@ export const AssessModelOutputSchema = AssessDeltaSchema.extend({
 });
 export const AssessRequestSchema = z
   .object({
-    answerTurns: z.array(AssessTurnSchema).min(1).max(3),
+    // A single spoken answer can be finalized in several adjacent ASR events.
+    // The capture layer keeps every captured fragment together before assessment.
+    answerTurns: z.array(AssessTurnSchema).min(1).max(12),
     focus: AssessFocusSchema,
     graph: ArgumentGraphSchema,
     recentTurns: z.array(AssessTurnSchema).max(6),

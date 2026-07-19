@@ -41,7 +41,7 @@ export function StudentReview({
       <div className="mx-auto max-w-4xl">
         <WorkspaceBanner
           audience="Student workspace"
-          description="Read the conversation while it is fresh. If something important was transcribed incorrectly, leave a note for your teacher."
+          description="Read the text transcript while it is fresh. If something important was transcribed incorrectly or missed, leave a note for your teacher."
           tip={`This record is about ${session.submission.title}. When you finish, it appears as complete in My Vivas.`}
           title="Check the conversation record."
         />
@@ -82,7 +82,8 @@ export function StudentReview({
           </div>
           <p className="mt-2 text-sm leading-6 text-[#655d52]">
             This is for transcription mistakes or missing context, not a second
-            answer to the conversation.
+            answer to the conversation. Viva does not retain audio, so it
+            cannot recover words that speech recognition never captured.
           </p>
           <Textarea
             className="mt-4 min-h-28 rounded-none border-[#d8d3c8] bg-[#fffdf9]"

@@ -54,10 +54,12 @@ import {
 import {
   createFocusForClaim,
   createPreviewNextFocus,
+  answerGroupIdForQuestionTurn,
   formatFocus,
   shouldResumeDefense,
   type Focus,
   type RealtimeResponseDiagnostic,
+  type TranscriptAppendOptions,
   type TranscriptTurn,
   type VivaSessionState,
 } from "@/lib/session-state";
@@ -83,12 +85,15 @@ type DefenseRoomProps = {
   onActivateFocus: () => VivaSessionState | null;
   onApplyAssessment: (
     delta: AssessDelta,
-    answerTurnIds: string[],
+    answerGroupId?: string,
   ) => VivaSessionState | null;
   onAppendRealtimeDiagnostic: (
     diagnostic: RealtimeResponseDiagnostic,
   ) => VivaSessionState | null;
-  onAppendTurn: (turn: TranscriptTurn) => VivaSessionState | null;
+  onAppendTurn: (
+    turn: TranscriptTurn,
+    options?: TranscriptAppendOptions,
+  ) => VivaSessionState | null;
   onComplete: () => VivaSessionState | null;
   onSetPendingFocus: (focus: Focus | undefined) => VivaSessionState | null;
   session: VivaSessionState;
@@ -97,11 +102,20 @@ type DefenseRoomProps = {
 type PendingAssessment = {
   activeFocus: Focus;
   afterAnswer: VivaSessionState;
-  answerTurn: TranscriptTurn;
+  answerGroupId: string;
+  answerTurns: TranscriptTurn[];
+  routeAfterAssessment: boolean;
+};
+
+type OpenAnswerGroup = {
+  claimId: string;
+  focus: Focus;
+  id: string;
 };
 
 const FINAL_AUDIO_DRAIN_TIMEOUT_MS = 8_000;
 const FINAL_AUDIO_PLAYOUT_GRACE_MS = 350;
+export const ANSWER_GROUP_SETTLE_MS = 1_200;
 const RESUME_FOCUS_INSTRUCTION =
   "[RESUME] This is a reconnection of a consented defense. Consent has already been spoken. Do not repeat consent, greet the student, or add a preamble. Ask exactly one concise question for this FOCUS. Quote at most twelve words; paraphrase anything longer.";
 
@@ -211,6 +225,8 @@ export function DefenseRoom({
   const assessmentAbortControllerRef = useRef<AbortController | null>(null);
   const assessmentInFlightRef = useRef(false);
   const fallbackAfterPausedAssessmentRef = useRef(false);
+  const openAnswerGroupRef = useRef<OpenAnswerGroup | null>(null);
+  const answerGroupSettleTimerRef = useRef<number | null>(null);
 
   const [connectionStatus, setConnectionStatus] =
     useState<ConnectionStatus>("idle");
@@ -221,6 +237,7 @@ export function DefenseRoom({
   const [isPaused, setIsPaused] = useState(false);
   const [isFinishing, setIsFinishing] = useState(false);
   const [isAssessing, setIsAssessing] = useState(false);
+  const [isFinalizingAnswer, setIsFinalizingAnswer] = useState(false);
   const [shouldReaskFocusAfterPause, setShouldReaskFocusAfterPause] =
     useState(false);
 
@@ -250,6 +267,20 @@ export function DefenseRoom({
     },
     [],
   );
+
+  const clearAnswerGroupSettleTimer = useCallback(() => {
+    if (answerGroupSettleTimerRef.current !== null) {
+      window.clearTimeout(answerGroupSettleTimerRef.current);
+      answerGroupSettleTimerRef.current = null;
+    }
+
+    setIsFinalizingAnswer(false);
+  }, []);
+
+  const closeOpenAnswerGroup = useCallback(() => {
+    clearAnswerGroupSettleTimer();
+    openAnswerGroupRef.current = null;
+  }, [clearAnswerGroupSettleTimer]);
 
   const clearFinalAudioTimers = useCallback(() => {
     if (finalAudioDrainTimeoutRef.current !== null) {
@@ -282,6 +313,7 @@ export function DefenseRoom({
       deferredAssessmentAfterPauseRef.current = null;
       fallbackAfterPausedAssessmentRef.current = false;
       cancelPendingAssessment();
+      closeOpenAnswerGroup();
       awaitingFinalAudioRef.current = false;
       clearFinalAudioTimers();
       const realtime = realtimeRef.current;
@@ -304,7 +336,12 @@ export function DefenseRoom({
 
       onComplete();
     },
-    [cancelPendingAssessment, clearFinalAudioTimers, onComplete],
+    [
+      cancelPendingAssessment,
+      clearFinalAudioTimers,
+      closeOpenAnswerGroup,
+      onComplete,
+    ],
   );
 
   const completeAfterFinalAudio = useCallback(() => {
@@ -459,12 +496,20 @@ export function DefenseRoom({
   );
 
   const startAssessment = useCallback(
-    ({ activeFocus, afterAnswer, answerTurn }: PendingAssessment) => {
+    ({
+      activeFocus,
+      afterAnswer,
+      answerGroupId,
+      answerTurns,
+      routeAfterAssessment,
+    }: PendingAssessment) => {
       if (isPausedRef.current) {
         deferredAssessmentAfterPauseRef.current = {
           activeFocus,
           afterAnswer,
-          answerTurn,
+          answerGroupId,
+          answerTurns,
+          routeAfterAssessment,
         };
         return;
       }
@@ -482,7 +527,7 @@ export function DefenseRoom({
         try {
           const { delta } = await requestAssessment(
             {
-              answerTurns: [answerTurn],
+              answerTurns,
               focus: activeFocus,
               graph: afterAnswer.graph,
               recentTurns: afterAnswer.transcript.turns.slice(-6),
@@ -502,26 +547,36 @@ export function DefenseRoom({
             return;
           }
 
-          const assessed = onApplyAssessment(delta, [answerTurn.id]);
+          const assessed = onApplyAssessment(delta, answerGroupId);
 
           if (!assessed) {
             return;
           }
 
           sessionStateRef.current = assessed;
-          scheduleNextFocus(
-            nextFocus(assessed.coverage, assessed.graph, timestamp()),
-          );
+          if (
+            routeAfterAssessment &&
+            sessionStateRef.current.activeFocus?.claimId === activeFocus.claimId
+          ) {
+            scheduleNextFocus(
+              nextFocus(assessed.coverage, assessed.graph, timestamp()),
+            );
+          }
         } catch {
           if (!assessmentGuardRef.current.isCurrent(assessmentToken)) {
             return;
           }
 
           setError(ASSESS_HICCUP_MESSAGE);
-          const current = sessionStateRef.current;
-          scheduleNextFocus(
-            nextFallbackFocus(current.coverage, current.graph, timestamp()),
-          );
+          if (
+            routeAfterAssessment &&
+            sessionStateRef.current.activeFocus?.claimId === activeFocus.claimId
+          ) {
+            const current = sessionStateRef.current;
+            scheduleNextFocus(
+              nextFallbackFocus(current.coverage, current.graph, timestamp()),
+            );
+          }
         } finally {
           if (assessmentGuardRef.current.isCurrent(assessmentToken)) {
             assessmentInFlightRef.current = false;
@@ -536,6 +591,52 @@ export function DefenseRoom({
       })();
     },
     [cancelPendingAssessment, onApplyAssessment, scheduleNextFocus, timestamp],
+  );
+
+  const queueAssessmentForOpenGroup = useCallback(
+    (group: OpenAnswerGroup) => {
+      clearAnswerGroupSettleTimer();
+      setIsFinalizingAnswer(true);
+
+      answerGroupSettleTimerRef.current = window.setTimeout(() => {
+        answerGroupSettleTimerRef.current = null;
+        setIsFinalizingAnswer(false);
+
+        if (openAnswerGroupRef.current?.id !== group.id) {
+          return;
+        }
+
+        const afterAnswer = sessionStateRef.current;
+        const persistedGroup = afterAnswer.coverage
+          .find((entry) => entry.claimId === group.claimId)
+          ?.answerGroups.find((entry) => entry.id === group.id);
+        const turnsById = new Map(
+          afterAnswer.transcript.turns.map((turn) => [turn.id, turn]),
+        );
+        const answerTurns = (persistedGroup?.answerTurnIds ?? []).flatMap(
+          (turnId) => {
+            const turn = turnsById.get(turnId);
+            return turn?.speaker === "student" ? [turn] : [];
+          },
+        );
+
+        if (answerTurns.length === 0) {
+          return;
+        }
+
+        startAssessment({
+          activeFocus: group.focus,
+          afterAnswer,
+          answerGroupId: group.id,
+          answerTurns,
+          // A queued FOCUS is not a turn boundary. A late ASR fragment stays
+          // with this group until Realtime creates the next Viva response.
+          routeAfterAssessment:
+            afterAnswer.activeFocus?.claimId === group.claimId,
+        });
+      }, ANSWER_GROUP_SETTLE_MS);
+    },
+    [clearAnswerGroupSettleTimer, startAssessment],
   );
 
   useEffect(() => {
@@ -574,12 +675,18 @@ export function DefenseRoom({
       }
 
       studentItemIdsRef.current.add(itemId);
+      const group = openAnswerGroupRef.current;
       const afterAnswer = onAppendTurn({
         id: itemId,
         speaker: "student",
         t: timestamp(),
         text,
-      });
+      }, group
+        ? {
+            answerGroupClaimId: group.claimId,
+            answerGroupId: group.id,
+          }
+        : undefined);
 
       if (!afterAnswer) {
         return;
@@ -589,22 +696,30 @@ export function DefenseRoom({
       const answerTurn = afterAnswer.transcript.turns.find(
         (turn) => turn.id === itemId,
       );
-      const activeFocus = afterAnswer.activeFocus;
 
-      if (!answerTurn || !activeFocus) {
-        scheduleNextFocus(
-          nextFallbackFocus(
-            afterAnswer.coverage,
-            afterAnswer.graph,
-            timestamp(),
-          ),
-        );
+      if (!answerTurn || !group) {
         return;
       }
 
-      startAssessment({ activeFocus, afterAnswer, answerTurn });
+      const persistedGroup = afterAnswer.coverage
+        .find((entry) => entry.claimId === group.claimId)
+        ?.answerGroups.find((entry) => entry.id === group.id);
+
+      if (!persistedGroup?.answerTurnIds.includes(answerTurn.id)) {
+        return;
+      }
+
+      // A second final event before Viva starts its next turn extends this
+      // answer rather than being assessed as an unrelated fragment.
+      cancelPendingAssessment();
+      queueAssessmentForOpenGroup(group);
     },
-    [onAppendTurn, scheduleNextFocus, startAssessment, timestamp],
+    [
+      cancelPendingAssessment,
+      onAppendTurn,
+      queueAssessmentForOpenGroup,
+      timestamp,
+    ],
   );
 
   const handleAgentTranscript = useCallback(
@@ -616,6 +731,7 @@ export function DefenseRoom({
       }
 
       agentItemIdsRef.current.add(itemId);
+      const focusForQuestion = sessionStateRef.current.activeFocus;
       const afterQuestion = onAppendTurn({
         id: itemId,
         speaker: "agent",
@@ -625,6 +741,21 @@ export function DefenseRoom({
 
       if (afterQuestion) {
         sessionStateRef.current = afterQuestion;
+
+        if (focusForQuestion) {
+          const groupId = answerGroupIdForQuestionTurn(itemId);
+          const persistedGroup = afterQuestion.coverage
+            .find((entry) => entry.claimId === focusForQuestion.claimId)
+            ?.answerGroups.find((entry) => entry.id === groupId);
+
+          if (persistedGroup) {
+            openAnswerGroupRef.current = {
+            claimId: focusForQuestion.claimId,
+            focus: focusForQuestion,
+            id: groupId,
+          };
+          }
+        }
       }
     },
     [onAppendTurn, timestamp],
@@ -640,6 +771,7 @@ export function DefenseRoom({
     queuedFocusRequestRef.current = null;
     deferredAssessmentAfterPauseRef.current = null;
     cancelPendingAssessment();
+    closeOpenAnswerGroup();
     fallbackAfterPausedAssessmentRef.current = false;
 
     if (realtimeRef.current) {
@@ -741,6 +873,11 @@ export function DefenseRoom({
         const raw = event as RawRealtimeEvent;
 
         if (raw.type === "output_audio_buffer.started") {
+          // The prior answer remains open until Viva's next audio actually
+          // begins. A queued FOCUS or a server-side response.created event is
+          // not enough: late final ASR fragments still belong to the answer
+          // the student just gave until the next question starts speaking.
+          closeOpenAnswerGroup();
           finalAudioBufferDrainedRef.current = false;
           return;
         }
@@ -925,6 +1062,7 @@ export function DefenseRoom({
   }, [
     examinerInstructions,
     cancelPendingAssessment,
+    closeOpenAnswerGroup,
     clearFinalAudioTimers,
     completeAfterFinalAudio,
     finishAndReview,
@@ -1063,11 +1201,12 @@ export function DefenseRoom({
       queuedFocusRequestRef.current = null;
       deferredAssessmentAfterPauseRef.current = null;
       cancelPendingAssessment();
+      closeOpenAnswerGroup();
       clearFinalAudioTimers();
       realtimeRef.current?.close();
       realtimeRef.current = null;
     };
-  }, [cancelPendingAssessment, clearFinalAudioTimers]);
+  }, [cancelPendingAssessment, clearFinalAudioTimers, closeOpenAnswerGroup]);
 
   const activeFocus = session.activeFocus ?? session.pendingFocus;
   const highlights = activeFocus
@@ -1236,6 +1375,12 @@ export function DefenseRoom({
               <CircleAlert className="mt-0.5 size-4 shrink-0" />
               <p>{error}</p>
             </div>
+          ) : null}
+
+          {isFinalizingAnswer ? (
+            <p className="mx-5 mt-5 flex items-center gap-2 text-sm text-[#655d52]" role="status">
+              <LoaderCircle className="size-4 animate-spin" /> Finalizing your answer before Viva responds.
+            </p>
           ) : null}
 
           {isAssessing ? (
