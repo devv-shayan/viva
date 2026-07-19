@@ -8,10 +8,12 @@ import {
   DossierRequestSchema,
   finalizeDossier,
   getDossierValidationIssues,
+  getExpectedDossierFindingPlan,
   type DossierModelOutput,
   type DossierRequest,
 } from "./dossier-types";
 import {
+  createDossier,
   DOSSIER_INSTRUCTIONS,
   DossierValidationError,
   generateValidatedDossier,
@@ -209,27 +211,15 @@ const validDraft: DossierModelOutput = DossierModelOutputSchema.parse({
     "The transcript records grounded follow-ups on the London evidence, the equity condition, and the enforcement-cost assumption. One answer included Urdu alongside English, recorded neutrally in the assessment ledger.",
   findings: [
     {
-      rubricId: "r1",
       claimId: "c1",
-      answerGroupId: "c1-drill-down-answer",
-      passage: { paragraphId: "p2", quote: "London traffic fell by 15 percent" },
-      status: "demonstrated",
       observation: "After a follow-up, the student named the 15 percent London traffic reduction and connected it to peak-time congestion.",
     },
     {
-      rubricId: "r2",
       claimId: "c2",
-      answerGroupId: "c2-counterfactual-answer",
-      passage: { paragraphId: "p3", quote: "Reinvested revenue can protect low-income commuters" },
-      status: "demonstrated",
       observation: "The student explained that the equity argument depends on reinvesting revenue in buses.",
     },
     {
-      rubricId: "r3",
       claimId: "c3",
-      answerGroupId: "c3-grounded-answer",
-      passage: { paragraphId: "p4", quote: "Safe City cameras make enforcement cheap" },
-      status: "needs_review",
       observation: "The student identified that integration and billing costs were not estimated, while explaining the assumption behind camera reuse.",
     },
   ],
@@ -261,13 +251,7 @@ describe("Viva dossier validation", () => {
     }));
     earlyRequest.assessmentLedger = [];
 
-    const dossier = await generateValidatedDossier({
-      request: DossierRequestSchema.parse(earlyRequest),
-      generate: async () => ({
-        summary: "The recorded conversation did not reach a reportable claim after consent.",
-        findings: [],
-      }),
-    });
+    const dossier = await createDossier(DossierRequestSchema.parse(earlyRequest));
 
     expect(dossier.findings).toEqual([]);
     expect(dossier.notTested).toEqual(["c1", "c2", "c3", "c4"]);
@@ -288,21 +272,10 @@ describe("Viva dossier validation", () => {
       (record) => record.claimId !== "c2",
     );
 
-    const timedOutDraft = structuredClone(validDraft);
-    const c2Finding = timedOutDraft.findings.find(
-      (finding) => finding.claimId === "c2",
-    );
-
-    if (!c2Finding) {
-      throw new Error("The fixture needs a c2 dossier finding.");
-    }
-
-    c2Finding.status = "needs_review";
-
     await expect(
       generateValidatedDossier({
         request: DossierRequestSchema.parse(timedOutRequest),
-        generate: async () => timedOutDraft,
+        generate: async () => validDraft,
       }),
     ).resolves.toMatchObject({
       findings: expect.arrayContaining([
@@ -310,10 +283,22 @@ describe("Viva dossier validation", () => {
       ]),
     });
 
+    const dishonestFinalDossier = finalizeDossier(
+      validDraft,
+      DossierRequestSchema.parse(timedOutRequest),
+    );
+    const c2Finding = dishonestFinalDossier.findings.find(
+      (finding) => finding.claimId === "c2",
+    );
+
+    if (!c2Finding) {
+      throw new Error("The fixture needs a c2 dossier finding.");
+    }
+
     c2Finding.status = "not_demonstrated";
     expect(
       getDossierValidationIssues(
-        finalizeDossier(timedOutDraft, DossierRequestSchema.parse(timedOutRequest)),
+        dishonestFinalDossier,
         DossierRequestSchema.parse(timedOutRequest),
       ).join("\n"),
     ).toContain("status must be needs_review");
@@ -358,7 +343,7 @@ describe("Viva dossier validation", () => {
   });
 
   it("rejects verdict language only in model-authored prose, not the student record", () => {
-    for (const word of ["cheating", "AI-generated", "plagiarism", "authorship", "80%", "grade", "score", "verdict", "probability"]) {
+    for (const word of ["cheating", "AI-generated", "plagiarism", "authorship", "80% authorship probability", "grade", "score", "verdict", "probability"]) {
       const candidate = finalizeDossier(
         { ...validDraft, summary: `The ${word} result is unsafe.` },
         request,
@@ -370,7 +355,91 @@ describe("Viva dossier validation", () => {
     }
   });
 
-  it("rejects citation links with an unknown answer group, wrong passage text, or dishonest status", () => {
+  it("allows grounded percentage evidence in model-authored prose", () => {
+    const candidate = finalizeDossier(
+      {
+        ...validDraft,
+        summary:
+          "The transcript discusses the assignment's stated 35% engagement increase alongside the student's explanation.",
+        findings: validDraft.findings.map((finding, index) =>
+          index === 0
+            ? {
+                ...finding,
+                observation:
+                  "The student connected the cited 35% engagement increase to the claim being discussed.",
+              }
+            : finding,
+        ),
+      },
+      request,
+    );
+
+    expect(getDossierValidationIssues(candidate, request)).toEqual([]);
+  });
+
+  it("keeps citations server-owned when model claim labels are incomplete or drifted", async () => {
+    const driftedDraft = DossierModelOutputSchema.parse({
+      summary: "The transcript records one grounded explanation for the teacher to review.",
+      findings: [
+        {
+          claimId: "c1",
+          observation: "The student connected London traffic evidence to the claim.",
+        },
+        {
+          claimId: "c1",
+          observation: "This duplicate must not replace the first observation.",
+        },
+        {
+          claimId: "unknown-claim",
+          observation: "This must never create a teacher finding.",
+        },
+      ],
+    });
+    let calls = 0;
+
+    const dossier = await generateValidatedDossier({
+      request,
+      generate: async () => {
+        calls += 1;
+        return driftedDraft;
+      },
+    });
+    const expectedPlan = getExpectedDossierFindingPlan(request);
+
+    expect(calls).toBe(1);
+    expect(
+      dossier.findings.map(
+        ({ rubricId, claimId, answerGroupId, passage, status }) => ({
+          rubricId,
+          claimId,
+          answerGroupId,
+          passage,
+          status,
+        }),
+      ),
+    ).toEqual(expectedPlan);
+    expect(dossier.findings.find((finding) => finding.claimId === "c2")?.observation).toContain(
+      "A student response was recorded",
+    );
+    expect(getDossierValidationIssues(dossier, request)).toEqual([]);
+  });
+
+  it("rejects model-supplied citation coordinates and persisted citation tampering", () => {
+    expect(
+      DossierModelOutputSchema.safeParse({
+        ...validDraft,
+        findings: [
+          {
+            ...validDraft.findings[0],
+            rubricId: "r1",
+            answerGroupId: "c1-drill-down-answer",
+            passage: { paragraphId: "p2", quote: "London traffic fell by 15 percent" },
+            status: "demonstrated",
+          },
+        ],
+      }).success,
+    ).toBe(false);
+
     const candidate = finalizeDossier(structuredClone(validDraft), request);
     candidate.findings[0].answerGroupId = "missing-answer-group";
     candidate.findings[1].passage = { paragraphId: "p3", quote: "protect low-income commuters" };
@@ -383,7 +452,7 @@ describe("Viva dossier validation", () => {
     expect(issues.join("\n")).toContain("status must be needs_review");
   });
 
-  it("rejects duplicate findings, wrong rubric IDs, and dishonest coverage links", () => {
+  it("rejects duplicate final findings, wrong rubric IDs, and dishonest coverage links", () => {
     const wrongRubric = finalizeDossier(structuredClone(validDraft), request);
     wrongRubric.findings[0].rubricId = "r3";
 
@@ -449,8 +518,8 @@ describe("Viva dossier validation", () => {
     );
 
     const parsedRequest = DossierRequestSchema.parse(groupedRequest);
-    const completeGroupDraft = structuredClone(validDraft);
-    const c1Finding = completeGroupDraft.findings.find(
+    const completeGroupDossier = finalizeDossier(validDraft, parsedRequest);
+    const c1Finding = completeGroupDossier.findings.find(
       (finding) => finding.claimId === "c1",
     );
 
@@ -458,15 +527,15 @@ describe("Viva dossier validation", () => {
       throw new Error("The fixture needs a c1 dossier finding.");
     }
 
-    c1Finding.answerGroupId = "c1-complete-spoken-answer";
+    expect(c1Finding.answerGroupId).toBe("c1-complete-spoken-answer");
     expect(
       getDossierValidationIssues(
-        finalizeDossier(completeGroupDraft, parsedRequest),
+        completeGroupDossier,
         parsedRequest,
       ),
     ).toEqual([]);
 
-    const finalFragmentOnly = structuredClone(completeGroupDraft);
+    const finalFragmentOnly = structuredClone(completeGroupDossier);
     const finalFragmentFinding = finalFragmentOnly.findings.find(
       (finding) => finding.claimId === "c1",
     );
@@ -480,14 +549,14 @@ describe("Viva dossier validation", () => {
     finalFragmentFinding.answerGroupId = "c1-final-fragment-only";
     expect(
       getDossierValidationIssues(
-        finalizeDossier(finalFragmentOnly, parsedRequest),
+        finalFragmentOnly,
         parsedRequest,
       ).join("\n"),
     ).toContain("complete answered group");
 
     const legacyFragmentCitation = {
-      ...completeGroupDraft,
-      findings: completeGroupDraft.findings.map((finding) =>
+      ...validDraft,
+      findings: validDraft.findings.map((finding) =>
         finding.claimId === "c1"
           ? { ...finding, answerTurnIds: ["t4-continuation"] }
           : finding,

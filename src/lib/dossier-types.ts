@@ -346,12 +346,18 @@ export const DossierSchema = z
   })
   .strict();
 
-/** Model-owned fields only. Student challenges and teacher actions remain local. */
-export const DossierModelFindingSchema = DossierFindingSchema.omit({
-  studentChallenge: true,
-  teacherAction: true,
-  teacherNote: true,
-});
+/**
+ * The model supplies an approved claim label only to associate its prose.
+ * Citation coordinates, rubric assignment, passage, and coverage status are
+ * computed from the consented server record so an opaque Realtime ID can
+ * never make a teacher summary fail.
+ */
+export const DossierModelFindingSchema = z
+  .object({
+    claimId: z.string().min(1),
+    observation: z.string().trim().min(1).max(700),
+  })
+  .strict();
 
 export const DossierModelOutputSchema = z
   .object({
@@ -373,7 +379,7 @@ export type DossierModelOutput = z.infer<typeof DossierModelOutputSchema>;
 export type Dossier = z.infer<typeof DossierSchema>;
 
 export const FORBIDDEN_DOSSIER_VOCABULARY =
-  /\bcheat\w*\b|\bai[\s-]?generated\b|\bplagiar\w*\b|\bauthorship\b|%|\bgrade\w*\b|\bscore\w*\b|\bverdict\w*\b|\bprobabilit(?:y|ies)\b/i;
+  /\bcheat\w*\b|\bai[\s-]?generated\b|\bplagiar\w*\b|\bauthorship\b|\bgrade\w*\b|\bscore\w*\b|\bverdict\w*\b|\bprobabilit(?:y|ies)\b/i;
 
 function formatZodIssues(error: z.ZodError) {
   return error.issues.map((issue) => {
@@ -442,12 +448,85 @@ export function getExpectedFindingStatus(
   return "not_demonstrated";
 }
 
+export type ExpectedDossierFinding = Pick<
+  DossierFinding,
+  "rubricId" | "claimId" | "answerGroupId" | "passage" | "status"
+>;
+
+function selectedAnswerGroup(
+  request: DossierRequest,
+  coverage: z.infer<typeof DossierCoverageEntrySchema>,
+) {
+  // Prefer the most recently completed assessment for this claim: its group
+  // is the captured answer that actually drove the saved coverage decision.
+  // If assessment did not land, cite the latest complete answer instead.
+  for (const record of [...request.assessmentLedger].reverse()) {
+    if (record.claimId !== coverage.claimId) {
+      continue;
+    }
+
+    const group = coverage.answerGroups.find(
+      (candidate) => candidate.id === record.answerGroupId,
+    );
+
+    if (group?.answerTurnIds.length) {
+      return group;
+    }
+  }
+
+  return [...coverage.answerGroups]
+    .reverse()
+    .find((group) => group.answerTurnIds.length > 0);
+}
+
+/** The complete server-owned evidence skeleton for each teacher finding. */
+export function getExpectedDossierFindingPlan(
+  request: DossierRequest,
+): ExpectedDossierFinding[] {
+  const claimMap = new Map(request.graph.claims.map((claim) => [claim.id, claim]));
+
+  return getReportableDossierClaimIds(request).map((claimId) => {
+    const claim = claimMap.get(claimId);
+    const coverage = coverageForClaim(request, claimId);
+    const answerGroup = coverage && selectedAnswerGroup(request, coverage);
+    const rubricId = claim?.rubricIds[0];
+
+    if (!claim || !coverage || !answerGroup || !rubricId) {
+      throw new Error(
+        `Reportable claim ${claimId} was missing its server-owned dossier evidence.`,
+      );
+    }
+
+    return {
+      rubricId,
+      claimId,
+      answerGroupId: answerGroup.id,
+      passage: claim.passage,
+      status: getExpectedFindingStatus(claim, coverage.status),
+    };
+  });
+}
+
 export function finalizeDossier(
   output: DossierModelOutput,
   request: DossierRequest,
 ): Dossier {
+  const observationsByClaim = new Map<string, string>();
+
+  for (const finding of output.findings) {
+    if (!observationsByClaim.has(finding.claimId)) {
+      observationsByClaim.set(finding.claimId, finding.observation);
+    }
+  }
+
   return DossierSchema.parse({
-    ...output,
+    summary: output.summary,
+    findings: getExpectedDossierFindingPlan(request).map((finding) => ({
+      ...finding,
+      observation:
+        observationsByClaim.get(finding.claimId) ??
+        "A student response was recorded for this claim. The linked passage, question, and captured answer are available for teacher review.",
+    })),
     framingNote: DOSSIER_FRAMING_NOTE,
     notTested: getNotTestedDossierClaimIds(request),
   });

@@ -7,8 +7,7 @@ import {
   DossierModelOutputSchema,
   finalizeDossier,
   getDossierValidationIssues,
-  getExpectedFindingStatus,
-  getReportableDossierClaimIds,
+  getExpectedDossierFindingPlan,
   type Dossier,
   type DossierModelOutput,
   type DossierRequest,
@@ -17,9 +16,10 @@ import {
 const MAX_DOSSIER_ATTEMPTS = 3;
 
 /**
- * The model drafts only observations and citations. The server owns the
- * notTested list and fixed framing note, and validates every link before a
- * dossier can reach local session storage or a teacher screen.
+ * The model drafts the summary and observations, labelled by claim. The
+ * server owns every citation coordinate, coverage status, the notTested list,
+ * and the fixed framing note before a dossier can reach local session storage
+ * or a teacher screen.
  */
 export const DOSSIER_INSTRUCTIONS = `You create a concise, evidence-linked Viva dossier for an instructor.
 
@@ -30,8 +30,8 @@ Rules:
 - Evaluate the content and reasoning in the student's answers only. Never weigh accent, fluency, hesitation, filler words, confidence, speaking pace, or delivery.
 - Never claim or imply cheating, AI generation, plagiarism, authorship, probabilities of authorship, grades, scores, or a verdict.
 - Return only the requested structured fields: summary and findings. Do not return framingNote, notTested, teacher actions, teacher notes, or student challenges; those are server-owned or local-only.
-- For each expected finding, use exactly its approved claim ID, one approved rubric ID, one approved answerGroupId, and the exact approved passage object. An answerGroupId is server-owned: it stands for one Viva question and every captured student fragment in that answer. Never invent or substitute IDs or passages.
-- Match the provided expected status exactly. Describe what the student explained, identified, or left unestimated in factual language. A neutral mention that an answer mixed another language is allowed only when the assessment ledger records it; never treat language as a quality signal.
+- For each expected finding, return exactly one object with its approved claimId and a factual observation. Do not return rubricId, answerGroupId, passage, or status: citation coordinates and coverage status are server-owned.
+- Describe what the student explained, identified, or left unestimated in factual language. A neutral mention that an answer mixed another language is allowed only when the assessment ledger records it; never treat language as a quality signal.
 - Keep the summary to two or three factual sentences, with no recommendation or decision for the instructor.`;
 
 export class DossierValidationError extends Error {
@@ -68,30 +68,10 @@ function formatZodIssues(error: { issues: Array<{ message: string; path: Propert
 }
 
 function buildExpectedFindingPlan(request: DossierRequest) {
-  const claimsById = new Map(
-    request.graph.claims.map((claim) => [claim.id, claim]),
-  );
-
-  return getReportableDossierClaimIds(request).map((claimId) => {
-    const claim = claimsById.get(claimId);
-    const coverage = request.coverage.find((entry) => entry.claimId === claimId);
-
-    if (!claim || !coverage) {
-      throw new DossierGenerationError(
-        "The dossier request did not contain a complete approved claim plan.",
-      );
-    }
-
-    return {
-      claimId,
-      allowedRubricIds: claim.rubricIds,
-      allowedAnswerGroupIds: coverage.answerGroups
-        .filter((group) => group.answerTurnIds.length > 0)
-        .map((group) => group.id),
-      passage: claim.passage,
-      expectedStatus: getExpectedFindingStatus(claim, coverage.status),
-    };
-  });
+  return getExpectedDossierFindingPlan(request).map(({ claimId, passage }) => ({
+    claimId,
+    passage,
+  }));
 }
 
 export function buildDossierInput(
@@ -187,6 +167,17 @@ export async function generateValidatedDossier({
 }
 
 export async function createDossier(request: DossierRequest): Promise<Dossier> {
+  if (getExpectedDossierFindingPlan(request).length === 0) {
+    return finalizeDossier(
+      {
+        summary:
+          "The consented conversation did not reach a reportable assignment claim. The complete recorded transcript remains available for teacher review.",
+        findings: [],
+      },
+      request,
+    );
+  }
+
   return generateValidatedDossier({
     request,
     generate: (validationFeedback) => requestDossier(request, validationFeedback),

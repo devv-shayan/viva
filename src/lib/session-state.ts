@@ -582,8 +582,9 @@ function legacyGroupForAnswerIds(
  * answer ID lists) into complete answer groups. The old shape did not store
  * an explicit link, so the only fair reconstruction is chronological: attach
  * each captured student turn to the latest question for that claim that came
- * before it. A one-question claim also keeps early ASR output with that sole
- * question, which mirrors the old live-event ordering.
+ * before it. An early legacy fragment remains transcript-only instead of
+ * being force-linked to a later question: inventing that citation would be
+ * less fair than leaving it available for teacher review without a finding.
  */
 function migrateLegacyVivaSession(value: unknown): VivaSessionState | null {
   if (!isRecord(value) || !Array.isArray(value.coverage) || !isRecord(value.transcript)) {
@@ -659,10 +660,6 @@ function migrateLegacyVivaSession(value: unknown): VivaSessionState | null {
         if (questions[index].turn.t < answer.t) {
           targetQuestionIndex = index;
         }
-      }
-
-      if (targetQuestionIndex < 0 && questions.length === 1) {
-        targetQuestionIndex = 0;
       }
 
       if (targetQuestionIndex >= 0) {

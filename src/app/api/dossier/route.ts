@@ -37,6 +37,9 @@ export async function POST(request: Request) {
     if (error instanceof DossierValidationError) {
       console.error("Viva dossier failed citation validation", {
         issueCount: error.issues.length,
+        // These are server-authored validation labels, not transcript text.
+        // Keep them in the server log so a failed retry loop is diagnosable.
+        issues: error.issues,
       });
 
       return errorResponse(

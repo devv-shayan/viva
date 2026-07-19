@@ -481,6 +481,59 @@ describe("Viva defense session state", () => {
     expect(migrated?.dossier?.findings[0]?.answerGroupId).toBe(answerGroupId);
   });
 
+  it("keeps an impossible legacy early fragment transcript-only", () => {
+    const current = createSession();
+    const legacy = {
+      ...current,
+      transcript: {
+        ...current.transcript,
+        turns: [
+          {
+            id: "student-early-legacy",
+            speaker: "student",
+            text: "This arrived before the question transcript finalized.",
+            t: 10,
+          },
+          {
+            id: "agent-later-legacy",
+            speaker: "agent",
+            text: "What evidence supports that claim?",
+            t: 20,
+          },
+        ],
+      },
+      coverage: current.coverage.map((coverage) => ({
+        claimId: coverage.claimId,
+        status: coverage.claimId === "thesis" ? "asked" : coverage.status,
+        questionTurnIds:
+          coverage.claimId === "thesis" ? ["agent-later-legacy"] : [],
+        answerTurnIds:
+          coverage.claimId === "thesis" ? ["student-early-legacy"] : [],
+        movesUsed: coverage.movesUsed,
+      })),
+    };
+
+    const migrated = parseVivaSession(
+      JSON.stringify({
+        version: 1,
+        savedAt: "2026-07-19T12:00:00.000Z",
+        session: legacy,
+      }),
+    );
+
+    expect(migrated?.transcript.turns).toEqual(legacy.transcript.turns);
+    expect(
+      migrated?.coverage.find((entry) => entry.claimId === "thesis")
+        ?.answerGroups,
+    ).toEqual([
+      {
+        id: answerGroupIdForQuestionTurn("agent-later-legacy"),
+        questionTurnId: "agent-later-legacy",
+        answerTurnIds: [],
+      },
+    ]);
+  });
+
   it("keeps capped or failed Realtime replies in the local consent record", () => {
     let session = createSession();
 
