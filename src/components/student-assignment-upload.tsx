@@ -37,8 +37,9 @@ export function StudentAssignmentUpload() {
       form.set("classId", classId);
       form.set("title", title);
       const response = await fetch("/api/assignments/upload", { body: form, method: "POST" });
-      const payload = (await response.json()) as { error?: string };
-      if (!response.ok) throw new Error(payload.error || "Could not upload the assignment.");
+      const isJson = response.headers.get("content-type")?.includes("application/json");
+      const payload = isJson ? (await response.json()) as { error?: string } : null;
+      if (!response.ok) throw new Error(payload?.error || "The upload service is temporarily unavailable. Please try again in a moment.");
       router.replace("/my-vivas");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not upload the assignment.");

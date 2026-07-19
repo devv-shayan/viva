@@ -1,4 +1,5 @@
 import mammoth from "mammoth";
+import "pdf-parse/worker";
 import { PDFParse } from "pdf-parse";
 
 export async function extractAssignmentText(input: {
