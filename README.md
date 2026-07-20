@@ -2,36 +2,51 @@
 
 **Evidence of understanding, not accusations.**
 
-Viva turns a student’s submitted essay into a short, document-grounded oral defense and gives the teacher an evidence dossier of what the student explained. It is an **OpenAI Build Week 2026** project for the **Education** track.
+Viva is an evidence-led oral-defense workspace for teachers and students. A student submits an assignment, a teacher sends a focused Viva, and the student explains their work. Viva creates a report of what the student did and did not explain, with links back to the submitted text and conversation.
+
+Viva is an **OpenAI Build Week 2026** project for the **Education** track.
 
 > Hackathon project. Viva is not affiliated with or endorsed by OpenAI.
 
-## Why Viva
+## The problem
 
-AI-authorship detectors make probabilistic claims about who wrote a piece of work. Viva takes a different approach: it gives students a fair chance to explain their own reasoning, tied to the exact passages in their submission.
+AI-authorship detectors make probabilistic claims about who wrote a piece of work. Viva takes a different approach: it gives a student a fair opportunity to explain their reasoning, tied to the exact passages in their own submission.
 
-Viva does **not** detect AI use, determine authorship, assign grades, or make accusations. Teachers remain responsible for every decision.
+Viva does **not** detect AI use, determine authorship, assign grades, or make accusations. The teacher remains responsible for every academic decision.
 
-## What it does
+## Product flow
 
-1. A teacher pastes an essay and chooses discussion objectives.
-2. Viva creates a document-grounded argument map with passages and weak spots.
-3. The student gives informed consent before Viva stores a text transcript of
-   the captured defense fragments.
-4. Viva asks focused follow-up and counterfactual questions while showing the relevant passage.
-5. The student reviews the transcript and can flag a misunderstanding or
-   missing context for their teacher.
-6. The teacher receives a citation-safe dossier linking each finding to the rubric objective, essay passage, question, and answer.
+1. A teacher creates a class and shares its private join link or code.
+2. A student joins the class, uploads a text-based PDF or DOCX assignment, and sees it in **My Vivas**.
+3. The teacher selects that student's work, prepares the discussion, and sends a Viva directly to that student.
+4. The student completes a document-grounded conversation. Each question is tied to a claim or passage from their submission.
+5. The teacher reviews the evidence dossier, then approves, dismisses, or annotates findings.
+6. When ready, the teacher shares the completed report with the student. The student can review and save it as a PDF.
 
-## Try the demo
+## What Viva evaluates
 
-The fastest judge path needs no microphone:
+Viva builds an argument map from the submitted assignment, then assesses the **content** of each answer against the relevant claim, evidence, and recent conversation. It can identify whether an answer demonstrated, partly demonstrated, or did not demonstrate the requested reasoning.
 
-1. Start the app and open `http://localhost:3000`.
-2. Select **Watch a sample defense**.
-3. Viva analyzes the sample essay, replays a scripted defense, assesses each answer through the live pipeline, and prepares the teacher report.
+It does not evaluate accent, fluency, pauses, confidence, grammar, or language choice. An answer in another language can still demonstrate understanding.
 
-The transcript is scripted for a reliable demo. The essay analysis, answer assessment, coverage map, and dossier are generated through the live application APIs.
+## Try it
+
+### Judge demo
+
+The fastest path needs no microphone:
+
+1. Open the app and select **Watch a sample defense**.
+2. Viva analyzes a sample assignment, replays a scripted conversation, assesses each answer through the live pipeline, and generates the teacher report.
+
+The replay transcript is scripted for reliability. The analysis, assessment, coverage map, and dossier use the live application APIs.
+
+### End-to-end classroom demo
+
+1. Create a teacher account and a class.
+2. Copy the student invite link and open it in a separate browser session.
+3. Join as a student, upload a text-based PDF or DOCX, and return to **My Vivas**.
+4. Return to the teacher dashboard, select the submission, and send the Viva.
+5. Complete it as the student, then return to the teacher dashboard to review and share the report.
 
 ## Run locally
 
@@ -39,6 +54,7 @@ The transcript is scripted for a reliable demo. The essay analysis, answer asses
 
 - Node.js 20+
 - An OpenAI API key with access to the configured models
+- A Cloudflare D1 database and private R2 bucket
 
 ### Setup
 
@@ -46,13 +62,20 @@ The transcript is scripted for a reliable demo. The essay analysis, answer asses
 npm install
 ```
 
-Create `.env.local` with your key:
+Create `.env.local`:
 
 ```env
 OPENAI_API_KEY=your_key_here
+
+CLOUDFLARE_ACCOUNT_ID=your_account_id
+CLOUDFLARE_D1_DATABASE_ID=your_d1_database_id
+CLOUDFLARE_API_TOKEN=your_d1_and_r2_api_token
+CLOUDFLARE_R2_BUCKET=your_private_bucket
+CLOUDFLARE_R2_ACCESS_KEY_ID=your_r2_access_key
+CLOUDFLARE_R2_SECRET_ACCESS_KEY=your_r2_secret
 ```
 
-Then run:
+Bootstrap the D1 schema using the instructions in [`docs/cloudflare-assignments.md`](docs/cloudflare-assignments.md), then run:
 
 ```bash
 npm run dev
@@ -69,48 +92,35 @@ npm run build
 ## Technology
 
 - Next.js 15, React 19, TypeScript, Tailwind CSS
-- OpenAI Responses API for essay analysis, answer assessment, and dossier generation
-- OpenAI Realtime Agents SDK for the live voice defense
-- Zod for structured-output and evidence validation
-- A consented text transcript and evidence record; Viva does not retain an
-  audio recording of the defense
+- Cloudflare D1 for users, sessions, classes, enrollments, assignments, and Viva state
+- Private Cloudflare R2 storage for the original PDF and DOCX files
+- OpenAI Responses API with structured outputs for evidence analysis, answer assessment, and dossier generation
+- OpenAI Realtime Agents SDK for live voice conversations
+- Zod validation for model outputs and evidence constraints
+
+## How Codex and GPT-5.6 are used
+
+Codex was used to explore the repository, design the classroom workflows, implement the role-specific experience, integrate Cloudflare D1 and R2, debug production issues, and validate the build.
+
+At runtime, Viva uses `gpt-5.6-terra` to create the document-grounded argument map and teacher dossier. It uses `gpt-5.6-luna` to produce concise, content-only observations for each answer. Both use structured outputs, and server-side validation rejects unsupported citations or verdict language.
+
+The live voice layer uses OpenAI's Realtime Agents SDK. Viva's application code chooses the next discussion focus; the models do not decide grades, authorship, or academic outcomes.
 
 ## Trust and fairness by design
 
-- Clear consent before the defense starts
-- Questions grounded in passages from the submitted essay
-- Content-only assessment: never accent, fluency, hesitation, confidence, or language choice
-- Multilingual answers supported without treating language as a quality signal
-- Student transcript review and clarification rights
-- Captured transcript fragments are linked to the relevant question and essay
-  passage for the evidence record
-- No retained audio: if speech recognition did not capture a word, Viva cannot
-  recover it later; students can flag the misunderstanding for their teacher
-- Teacher-controlled findings: approve, dismiss, or annotate
-- Server validation rejects unsupported citations and verdict language
-- The teacher, not Viva, makes decisions
+- The original assignment remains private in R2 storage.
+- Student and teacher access is scoped to their class and assigned Viva.
+- Questions are grounded in passages from the submitted assignment.
+- Assessment is content-only, not a judgement of speech, language, or identity.
+- Findings are evidence-linked and teacher-controlled.
+- Students can see a shared report and save a copy after the teacher releases it.
+- Server validation rejects unsupported citations and authorship-verdict language.
 
-### Transcript fidelity
+## Current limitations
 
-Viva stores the consented **text transcript** produced from captured final
-speech-recognition fragments. It groups those fragments with the relevant
-question and submission passage so the teacher can inspect the evidence behind
-a finding. It does not keep an audio recording of the defense.
-
-Speech recognition can miss or mishear words. If a word was never captured in
-the text transcript, Viva cannot restore it later without retaining audio,
-which it deliberately does not do. The student can flag a misunderstanding or
-missing context for their teacher before the record is used in review.
-
-## How Codex and GPT-5.6 were used
-
-Codex was used throughout the build to implement the application surface, role-specific workflows, real-time defense handling, evidence coverage orchestration, tests, validation, and the judge demo flow.
-
-At runtime, GPT-5.6 generates the essay argument graph, content-only answer assessments, and the evidence dossier through structured outputs. The realtime defense uses OpenAI’s Realtime Agents SDK. The orchestration policy that chooses the next discussion move is deterministic application code, not a model decision.
-
-## Submission notes
-
-OpenAI Build Week submissions require a project description, a public demonstration video shorter than three minutes with audio explaining Codex and GPT-5.6 usage, and a code repository URL. See the [official Build Week page](https://openai.com/build-week/) and [official Devpost rules](https://openai.devpost.com/rules) for the current requirements.
+- PDF uploads require extractable text. Image-only/scanned PDFs need an OCR fallback, which is not yet implemented.
+- Invite delivery is currently copy-and-share; email delivery is not yet built.
+- This hackathon version is not a complete institutional identity or learning management system integration.
 
 ## License
 

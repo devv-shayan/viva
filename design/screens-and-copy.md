@@ -1,159 +1,65 @@
-# Viva — Screens & Trust/Fairness Copy
+# Viva - Current Screens and Copy
 
-Five screens, one flow. Copy below is canonical — paste into Codex prompts
-verbatim. Tone: calm, fair, plain words. The reader of every label is either a
-nervous student or a judge checking whether "no verdicts" is real.
+## Landing page
 
-## Screen 1 — Teacher setup
+**Purpose:** explain the product and route each signed-in person to the correct workspace.
 
-```
-┌──────────────────────────────────────────────┐
-│  Viva — evidence of understanding,           │
-│  not accusations.                            │
-│                                              │
-│  Paste the student's submission:             │
-│  [ text area                    ]            │
-│  [ Load sample essay ]                       │
-│  Student name: [ Areeba Khan ]               │
-│                                              │
-│  What should this defense assess? (3)        │
-│  1 [ Supports claims with cited evidence ]   │
-│  2 [ Engages counterarguments honestly  ]    │
-│  3 [ Reasons about policy trade-offs    ]    │
-│                                              │
-│  [ Analyze the submission → ]                │
-│  ── or ──  [ ▶ Watch a sample defense ]      │
-└──────────────────────────────────────────────┘
-```
+- Teacher CTA: `Visit teacher dashboard`
+- Student CTA: `Visit student workspace`
+- Judge CTA: `Watch a sample defense`
+- Core message: `Evidence of understanding, not accusations.`
 
-## Screen 2 — Analysis review (teacher)
+## Teacher dashboard
 
-```
-┌──────────────────────────────────────────────┐
-│  Here's the argument Viva found. The defense │
-│  will only ask about what's on this page.    │
-│                                              │
-│  THESIS  Karachi should adopt CBD pricing    │
-│  CLAIM 1 Pricing reduces traffic             │
-│          evidence: London −15% · Stockholm   │
-│  CLAIM 2 Equity concern overstated           │
-│          evidence: trip composition (uncited)│
-│  ⚠ ASSUMPTION Enforcement costs "minimal"    │
-│          no supporting evidence — will be    │
-│          asked about                         │
-│                                              │
-│  [ Start the defense → ]   [ Edit rubric ]   │
-└──────────────────────────────────────────────┘
-```
-Trust point: teacher sees and approves the interview plan — no hidden agenda.
+**Purpose:** create a class, share a student invite, and choose submitted work.
 
-## Screen 3 — Student consent
+- Heading: `Your classes, ready for a fair Viva.`
+- Primary action: create or select a class.
+- Student row actions: `Prepare Viva` for a new assignment, `Review Viva` for a completed conversation.
+- Invite action: `Copy student invite link`.
 
-> **This is a chance to show your understanding — not a test of your speaking.**
-> - Viva stores a consented text transcript of the speech-recognition fragments
->   it captures; your teacher sees that transcript and a summary. Viva does not
->   retain an audio recording.
-> - Viva never judges who wrote your work and never gives grades or verdicts.
-> - Answer in whichever language is comfortable — content is what counts,
->   not accent or fluency.
-> - Afterwards you'll review the transcript and can flag anything you think
->   was misunderstood or missed. Your teacher makes all decisions.
-> - You can pause anytime. [ ✓ I understand ] [ Begin ]
+## Student join and upload
 
-## Screen 4 — Defense room
+**Purpose:** allow a student to join a class and share an assignment.
 
-```
-┌───────────────────────────┬──────────────────┐
-│ SUBMISSION (highlighted)  │ UNDERSTANDING    │
-│ ...Critics argue that     │ ● Thesis    ✓    │
-│ congestion pricing        │ ● Claim 1   ◐    │
-│ ▌falls hardest on         │ ● Claim 2   ○    │
-│ ▌low-income commuters...  │ ● Assumption ○   │
-│                           │                  │
-│ Viva: "...what evidence   │ ✓ demonstrated   │
-│ led you to that           │ ◐ partly · asked │
-│ conclusion?"              │ ○ not yet        │
-│                           │                  │
-│ [ ⏸ Pause ]  ● 02:41      │                  │
-└───────────────────────────┴──────────────────┘
-```
-The passage highlight moving in sync with each question IS the
-"document-grounded" pitch — make it visually unmissable.
+- Heading: `Share your assignment.`
+- Inputs: class, assignment title, PDF or DOCX file.
+- Primary action: `Share with teacher`.
+- Requirements: text-based PDF or DOCX, maximum 10 MB; originals remain in private Cloudflare storage.
+- Completion: route the student to `My Vivas` after successful upload.
 
-## Screen 5a — Student review (before teacher sees it)
+## Student dashboard
 
-> Here's the text transcript Viva captured. It links captured fragments to the
-> question and passage used as evidence. If Viva misunderstood an answer or
-> missed something important, flag it — your note goes to your teacher
-> alongside the finding. Viva does not retain audio, so it cannot recover words
-> that speech recognition never captured.
-> [each finding: 🚩 "This doesn't reflect what I meant" + note field]
+**Purpose:** show classes, submitted work, assigned Vivas, and shared reports.
 
-## Screen 5b — Teacher dossier
+- Heading: `Your Vivas and assignments.`
+- New assignment CTA: `Upload an assignment`.
+- Assigned Viva actions: `Start Viva` or `Continue Viva`.
+- Completed report action: `View report` after teacher sharing.
 
-```
-┌──────────────────────────────────────────────┐
-│  Defense summary — Areeba Khan               │
-│  These are observations with evidence links, │
-│  not judgments. Decisions are yours.         │
-│                                              │
-│  ✓ Evidence (r1): DEMONSTRATED               │
-│    London −15% explained after follow-up     │
-│    → passage p2 · Q at 0:48 · answer 1:15    │
-│  ✓ Counterarguments (r2): DEMONSTRATED       │
-│    Recognized equity case depends on         │
-│    reinvestment (counterfactual)             │
-│  ⚠ Trade-offs (r3): NEEDS REVIEW             │
-│    Student identified enforcement-cost claim │
-│    as an unestimated assumption              │
-│    → passage p4 · Q 3:05 · answer 3:22       │
-│    [ Approve ] [ Dismiss ] [ Annotate ]      │
-│                                              │
-│  Not tested: revenue claim (time budget)     │
-│  ⓘ One answer given partly in Urdu;          │
-│    content assessed.                         │
-│  [ ⬇ Export ]  [ 🗑 Delete everything ]       │
-└──────────────────────────────────────────────┘
-```
+## Viva conversation
 
-## Canonical copy strings
+**Purpose:** help a student explain their own submitted work one focused point at a time.
 
-**Framing note (dossier header + export footer):**
-> Viva reports what the student could and couldn't explain about their
-> submitted work, with links to the exact passages and answers. It does not
-> detect AI use, determine authorship, or make judgments — those decisions
-> belong to the instructor.
+- Keep the current question and relevant passage visible.
+- Use content-only language; never show authorship, AI-use, confidence, or score claims.
+- Allow pause and clear recovery states.
+- Student promise: `You can pause anytime.`
+- Student answers can be concise or use another language.
 
-**Landing tagline:** Evidence of understanding, not accusations.
+## Teacher report
 
-**Delete confirmation:**
-> Delete everything? This removes the submission, transcript, and report from
-> this device. Nothing is stored anywhere else, so this cannot be undone.
-> [ Keep it ] [ Delete everything ]
+**Purpose:** provide evidence for teacher judgement.
 
-**Assess-hiccup (a turn fails to process):**
-> (one answer couldn't be processed — the recording is safe and the defense
-> continues)
+- Heading: `Evidence you can discuss together.`
+- Each finding keeps the assignment passage, Viva question, and cited student answer together.
+- Teacher actions: `Approve`, `Dismiss`, and `Annotate`.
+- Report actions: `Save report as PDF` and `Share with student`.
+- Framing: the report describes conversation evidence only; it does not assess AI use or authorship.
 
-**Transcript fidelity (student consent + review):**
-> Viva stores a consented text transcript of captured speech-recognition
-> fragments, not an audio recording. It groups those fragments with the
-> relevant question and submission passage for evidence. If speech recognition
-> never captured a word, Viva cannot recover it later without retained audio;
-> flag the misunderstanding for your teacher instead.
+## Copy guardrails
 
-**Demo banner:** Demo — replaying a sample defense. No microphone used.
-
-**Pause state:** Paused — Viva isn't listening. Take your time.
-
-**Fairness line (student consent + README):**
-> Viva assesses the content of answers — never accent, fluency, hesitation,
-> or confidence. Detectors' documented failure is false-flagging non-native
-> writers; Viva's design removes that failure mode rather than automating it.
-
-## Design directions
-- Feel: calm academic paper, not dashboard. Off-white, one serif for the
-  submission text, sans for UI. Amber/green/neutral status colors — NO red
-  anywhere (red = accusation).
-- The understanding map is claim cards with status dots — no graph library.
-- Nothing blinks; transitions are 200ms fades. Light theme only.
+- Prefer plain terms such as `assignment`, `conversation`, `report`, and `point to revisit`.
+- Do not use grades, scores, probabilities, accusations, or authorship language.
+- Make the next step obvious on every screen.
+- Pair status color with text; yellow supports attention, not alarm.
