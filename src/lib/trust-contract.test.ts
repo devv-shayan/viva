@@ -93,4 +93,23 @@ describe("student trust contract", () => {
       ),
     ).toContain("Assessment note contains forbidden fairness or verdict vocabulary.");
   });
+
+  it("keeps the consent opening literal and questions neutral in the runtime prompt", () => {
+    expect(examinerInstructions).toContain("Consent-first hard rule");
+    expect(examinerInstructions).toContain("the first audible words of");
+    expect(examinerInstructions).toContain(
+      'your first response MUST be exactly: "Before we start —',
+    );
+    expect(examinerInstructions).toContain(
+      "Do not create a separate preamble response.",
+    );
+    expect(examinerInstructions).toContain("If no `[FOCUS]` has arrived");
+    expect(examinerInstructions).toContain("emit no spoken content.");
+    expect(examinerInstructions).toContain("Question neutrality:");
+    expect(examinerInstructions).toContain("Do not say");
+    expect(examinerInstructions).toContain('"Maybe you explained…"');
+    expect(examinerInstructions).toMatch(
+      /the explanation itself must\s+come from the student\./,
+    );
+  });
 });

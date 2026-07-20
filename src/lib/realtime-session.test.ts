@@ -7,9 +7,18 @@ import {
 } from "./realtime-session";
 
 describe("Realtime session safeguards", () => {
-  it("allows the consent statement and a grounded question while keeping a hard reply cap", () => {
+  it("disables automatic replies from the initial session while keeping a hard reply cap", () => {
     expect(REALTIME_MAX_OUTPUT_TOKENS).toBe(1_024);
     expect(createRealtimeClientSecretSession("gpt-realtime-2.1-mini")).toEqual({
+      audio: {
+        input: {
+          turn_detection: {
+            create_response: false,
+            interrupt_response: false,
+            type: "semantic_vad",
+          },
+        },
+      },
       max_output_tokens: 1_024,
       model: "gpt-realtime-2.1-mini",
       type: "realtime",

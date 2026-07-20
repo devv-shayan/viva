@@ -30,6 +30,20 @@ export type RealtimeResponse = {
 
 export function createRealtimeClientSecretSession(model: string) {
   return {
+    // The microphone is attached before the browser can acknowledge its own
+    // session.update. Disable automatic replies in the initial server-created
+    // session too, so no ambient audio can create a response before Viva has
+    // injected its first [FOCUS]. The browser repeats this configuration as
+    // defense in depth once the RealtimeAgent connects.
+    audio: {
+      input: {
+        turn_detection: {
+          create_response: false,
+          interrupt_response: false,
+          type: "semantic_vad",
+        },
+      },
+    },
     // Realtime output tokens include the spoken audio as well as its transcript.
     // This leaves room for Viva's consent statement plus one concise,
     // document-grounded question, while still imposing a firm per-reply limit.
