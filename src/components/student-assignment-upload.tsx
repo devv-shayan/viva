@@ -20,7 +20,14 @@ export function StudentAssignmentUpload() {
   useEffect(() => {
     void fetch("/api/classes/mine").then(async (response) => {
       const payload = (await response.json()) as { classes?: Array<{ id: string; name: string }> };
-      if (response.ok) { setClasses(payload.classes ?? []); setClassId(payload.classes?.[0]?.id ?? ""); }
+      if (response.ok) {
+        const loaded = payload.classes ?? [];
+        setClasses(loaded);
+        // Only pre-select when there is no ambiguity. With multiple classes the
+        // student must choose explicitly, so an upload can't silently land on the
+        // most recently created class.
+        setClassId(loaded.length === 1 ? loaded[0].id : "");
+      }
     });
   }, []);
 

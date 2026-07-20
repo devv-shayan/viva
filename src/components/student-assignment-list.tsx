@@ -7,6 +7,7 @@ type Assignment = {
   id: string;
   title: string;
   file_name: string;
+  class_name: string | null;
 };
 
 export function StudentAssignmentList() {
@@ -34,7 +35,7 @@ export function StudentAssignmentList() {
       <div className="mt-3 space-y-2">
         {assignments.map((assignment) => (
           <article className="rounded-xl bg-[#fff9dc] p-3" key={assignment.id}>
-            <div className="flex items-start gap-2"><FileText className="mt-0.5 size-4 shrink-0" /><div><p className="font-semibold">{assignment.title}</p><p className="mt-1 break-all text-xs text-[#655d52]">{assignment.file_name}</p></div></div>
+            <div className="flex items-start gap-2"><FileText className="mt-0.5 size-4 shrink-0" /><div><p className="font-semibold">{assignment.title}</p><p className="mt-1 break-all text-xs text-[#655d52]">{assignment.file_name}</p>{assignment.class_name ? <p className="mt-1 text-xs font-semibold text-[#695915]">Class: {assignment.class_name}</p> : null}</div></div>
           </article>
         ))}
       </div>
