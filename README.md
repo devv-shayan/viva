@@ -108,9 +108,10 @@ The live voice layer uses OpenAI's Realtime Agents SDK. Viva's application code 
 
 ## Team contributions
 
-- **Shayan Khan** — Built the core AI and conversation pipeline: GPT-5.6 analysis, content-only answer assessment and dossier contracts, Realtime voice integration, evidence validation, and automated tests.
-- **Ahmed Sheikh** — Built the product and delivery experience: teacher and student workspaces, class invites, assignment upload and report flows, Cloudflare D1/R2 integration, UI/accessibility work, QA, and demo readiness.
-- **Shared** — Reviewed role permissions and evidence-record changes, verified the end-to-end classroom flow, and kept the teacher as the final academic decision-maker.
+- **Shayan Khan** — Established the project foundation and built the OpenAI-powered evidence engine: the browser voice spike and consented Realtime defense room; GPT-5.6 argument mapping, content-only assessment, deterministic orchestration, grouped transcript evidence, and citation-safe dossiers; plus the fairness safeguards and automated tests around those flows.
+- **Ahmed Sheikh** — Built and refined the classroom product and delivery path: teacher and student workspaces, authentication, classes and invites, assignment upload and PDF/serverless handling, Cloudflare-backed classroom workflows, teacher/student report interfaces, the live demo replay, sample materials, and project documentation.
+
+The work was integrated as one product: a student submission becomes a private, teacher-sent Viva, then an evidence-linked report for the teacher to review.
 
 ## Trust and fairness by design
 
