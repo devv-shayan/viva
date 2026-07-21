@@ -106,6 +106,12 @@ At runtime, Viva uses `gpt-5.6-terra` to create the document-grounded argument m
 
 The live voice layer uses OpenAI's Realtime Agents SDK. Viva's application code chooses the next discussion focus; the models do not decide grades, authorship, or academic outcomes.
 
+## Team contributions
+
+- **Shayan Khan** — Built the core AI and conversation pipeline: GPT-5.6 analysis, content-only answer assessment and dossier contracts, Realtime voice integration, evidence validation, and automated tests.
+- **Ahmed Sheikh** — Built the product and delivery experience: teacher and student workspaces, class invites, assignment upload and report flows, Cloudflare D1/R2 integration, UI/accessibility work, QA, and demo readiness.
+- **Shared** — Reviewed role permissions and evidence-record changes, verified the end-to-end classroom flow, and kept the teacher as the final academic decision-maker.
+
 ## Trust and fairness by design
 
 - The original assignment remains private in R2 storage.
